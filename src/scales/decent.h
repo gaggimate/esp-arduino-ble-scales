@@ -51,6 +51,6 @@ public:
 private:
   static bool handles(const DiscoveredDevice& device) {
     const std::string& deviceName = device.getName();
-    return !deviceName.empty() && (deviceName.find("Decent Scale") == 0);
+    return !deviceName.empty() && (deviceName.find("Decent Scale") == 0 || deviceName.find("EspressiScale") == 0);
   }
 };
