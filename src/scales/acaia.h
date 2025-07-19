@@ -57,6 +57,9 @@ private:
   void handleScaleStatusPayload(const uint8_t* pData, size_t length);
   float decodeWeight(const uint8_t* weightPayload);
   float decodeTime(const uint8_t* timePayload);
+  
+  // Helper to identify Umbra model scales which use slightly different BLE characteristics
+  bool isUmbraModel() const;
 };
 
 class ScaleStatus {
@@ -90,6 +93,7 @@ private:
       || deviceName.find("PYXIS") == 0
       || deviceName.find("LUNAR") == 0
       || deviceName.find("PEARL") == 0
-      || deviceName.find("PROCH") == 0);
+      || deviceName.find("PROCH") == 0
+      || deviceName.find("UMBRA") == 0);
   }
 };
