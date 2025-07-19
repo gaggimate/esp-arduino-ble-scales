@@ -10,6 +10,10 @@
 * |     Header      |  Mesg |      Payload      |    Checksum
 * |  byte1 |  byte2 |  Type | Length  |   Data  | byte1   | byte2
 * ---------------------------------------------------------------
+*
+* Note: Acaia Umbra Lunar scales use the same protocol but with:
+* - Different BLE service/characteristic UUIDs (fe40/fe41/fe42 instead of standard UUIDs)
+* - Weight data in bytes 2-3 instead of 0-1 (big-endian order)
 */
 
 enum class AcaiaHeader : uint8_t {
@@ -42,6 +46,11 @@ const NimBLEUUID commandCharacteristicUUID("49535343-8841-43f4-a8d4-ecbe34729bb3
 
 const NimBLEUUID oldServiceUUID("00001820-0000-1000-8000-00805f9b34fb");
 const NimBLEUUID oldCharacteristicUUID("00002a80-0000-1000-8000-00805f9b34fb");
+
+// Acaia Umbra Lunar uses different BLE UUIDs but the same protocol
+const NimBLEUUID umbraServiceUUID("0000fe40-cc7a-482a-984a-7f2ed5b3e58f");
+const NimBLEUUID umbraCommandCharacteristicUUID("0000fe41-8e22-4541-9d4c-21edae82ed19");
+const NimBLEUUID umbraWeightCharacteristicUUID("0000fe42-8e22-4541-9d4c-21edae82ed19");
 
 //-----------------------------------------------------------------------------------/
 //---------------------------        PUBLIC       -----------------------------------/
@@ -157,7 +166,7 @@ bool AcaiaScales::decodeAndHandleNotification() {
       // This normally means that something went wrong with the establishing a connection so we disconnect.
       markedForReconnection = true;
     }
-    
+
   }
   else {
     RemoteScales::log("Unknown message type %02X: %s\n", messageType, RemoteScales::byteArrayToHexString(dataBuffer.data(), messageLength).c_str());
@@ -238,8 +247,19 @@ void AcaiaScales::handleScaleStatusPayload(const uint8_t* payload, size_t length
 }
 
 float AcaiaScales::decodeWeight(const uint8_t* weightPayload) {
-  float value = (weightPayload[1] << 8) | weightPayload[0];
-  uint8_t scaling = weightPayload[4];
+  float value;
+  uint8_t scaling;
+
+  // Umbra scales use different byte positions for weight data
+  if (isUmbraModel()) {
+    // Umbra: weight is in bytes 2-3 (big-endian: byte 2 is MSB, byte 3 is LSB)
+    value = (weightPayload[2] << 8) | weightPayload[3];
+    scaling = weightPayload[4];
+  } else {
+    // Standard Acaia scales: weight is in bytes 0-1
+    value = (weightPayload[1] << 8) | weightPayload[0];
+    scaling = weightPayload[4];
+  }
 
   switch (scaling) {
   case 1:
@@ -279,13 +299,21 @@ bool AcaiaScales::performConnectionHandshake() {
   else if (RemoteScales::clientGetService(serviceUUID)) {
     service = RemoteScales::clientGetService(serviceUUID);
   }
+  else if (RemoteScales::clientGetService(umbraServiceUUID)) {
+    service = RemoteScales::clientGetService(umbraServiceUUID);
+  }
   else {
+    RemoteScales::log("No compatible service found\n");
     clientCleanup();
     return false;
   }
-  RemoteScales::log("Got Service\n");
 
-  if (service->getCharacteristic(oldCharacteristicUUID)) {
+  if (service->getUUID().equals(umbraServiceUUID)) {
+    // Umbra fe40 service uses fe41 for commands, fe42 for weight notifications
+    weightCharacteristic = service->getCharacteristic(umbraWeightCharacteristicUUID);
+    commandCharacteristic = service->getCharacteristic(umbraCommandCharacteristicUUID);
+  }
+  else if (service->getCharacteristic(oldCharacteristicUUID)) {
     weightCharacteristic = service->getCharacteristic(oldCharacteristicUUID);
     commandCharacteristic = service->getCharacteristic(oldCharacteristicUUID);
   }
@@ -295,12 +323,13 @@ bool AcaiaScales::performConnectionHandshake() {
   }
 
   if (weightCharacteristic == nullptr || commandCharacteristic == nullptr) {
+    RemoteScales::log("Failed to find required characteristics\n");
     clientCleanup();
     return false;
   }
   RemoteScales::log("Got weightCharacteristic and commandCharacteristic\n");
 
-  // Subscribe
+  // Subscribe to notifications
   NimBLERemoteDescriptor* notifyDescriptor = weightCharacteristic->getDescriptor(NimBLEUUID((uint16_t)0x2902));
   RemoteScales::log("Got notifyDescriptor\n");
   if (notifyDescriptor != nullptr) {
@@ -432,4 +461,8 @@ static void cleanupJunkData(std::vector<uint8_t>& dataBuffer) {
   if (messageStart == dataBuffer.size() - 1 && dataBuffer[messageStart] != (uint8_t)AcaiaHeader::HEADER1) {
     dataBuffer.clear();
   }
+}
+
+bool AcaiaScales::isUmbraModel() const {
+  return RemoteScales::getDeviceName().find("UMBRA") != std::string::npos;
 }
