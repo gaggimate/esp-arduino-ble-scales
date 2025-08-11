@@ -94,7 +94,6 @@ bool myscale::verifyConnected() {
 }
 
 void myscale::notifyCallback(NimBLERemoteCharacteristic* characteristic, uint8_t* data, size_t length, bool isNotify) {
-    //log("Notification received.\n");
     if (length < 15) {
         log("Malformed data.\n");
         return;
@@ -106,9 +105,8 @@ void myscale::notifyCallback(NimBLERemoteCharacteristic* characteristic, uint8_t
 
 void myscale::parseStatusUpdate(const uint8_t* data, size_t length) {
     int32_t raw = parseWeight(data);
-    float weight = static_cast<float>(raw) / 1000.0f; // matches JS parseInt(...)/1000
+    float weight = static_cast<float>(raw) / 1000.0f; 
     setWeight(weight);
-    //log("Weight updated: %.1f g\n", weight);
 }
 
 
