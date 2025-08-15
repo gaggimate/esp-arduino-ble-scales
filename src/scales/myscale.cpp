@@ -46,9 +46,24 @@ void myscale::update() {
 }
 
 bool myscale::tare() {
-    // Scale has no tare capability
-    return false;
+    if (!isConnected()) return false;
 
+    // Hex value to send on tare
+    uint8_t tare_value[] = {
+        0xAC, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0xD2, 0xD2
+    };
+
+    auto writeChar = service->getCharacteristic(WRITE_CHARACTERISTIC_UUID);
+    if (!writeChar) {
+        log("Write characteristic not found.\n");
+        return false;
+    }
+
+    writeChar->writeValue(tare_value, sizeof(tare_value), false); // write without response
+    log("Tare command sent.\n");
+    return true;
 }
 
 bool myscale::performConnectionHandshake() {
