@@ -4,6 +4,7 @@
 // Initialize UUID constants
 const NimBLEUUID myscale::DATA_SERVICE_UUID("0000FFB0-0000-1000-8000-00805F9B34FB");
 const NimBLEUUID myscale::DATA_CHARACTERISTIC_UUID("0000FFB2-0000-1000-8000-00805F9B34FB");
+const NimBLEUUID myscale::WRITE_CHARACTERISTIC_UUID("0000FFB1-0000-1000-8000-00805F9B34FB");
 
 myscale::myscale(const DiscoveredDevice& device) : RemoteScales(device) {}
 
