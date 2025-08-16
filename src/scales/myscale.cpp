@@ -63,7 +63,11 @@ bool myscale::tare() {
     }
 
     writeChar->writeValue(tare_value, sizeof(tare_value), false); // write without response
+
     log("Tare command sent.\n");
+    // It takes some time until the value is applied
+    delay(100);
+    
     return true;
 }
 
