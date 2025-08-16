@@ -31,6 +31,7 @@ private:
     // Constants specific to myscale Scales
     static const NimBLEUUID DATA_SERVICE_UUID;
     static const NimBLEUUID DATA_CHARACTERISTIC_UUID;
+    static const NimBLEUUID WRITE_CHARACTERISTIC_UUID
 };
 
 
