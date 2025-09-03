@@ -67,13 +67,13 @@ private:
 // ---------------------------------------------------------------------------------------
 // ---------------------------   RemoteScalesScanner    -----------------------------------
 // ---------------------------------------------------------------------------------------
-class RemoteScalesScanner : public NimBLEAdvertisedDeviceCallbacks {
+class RemoteScalesScanner : public NimBLEScanCallbacks {
 private:
   bool isRunning = false;
   LRUCache alreadySeenAddresses = LRUCache(100);
   std::vector<DiscoveredDevice> discoveredScales;
   void cleanupDiscoveredScales();
-  void onResult(NimBLEAdvertisedDevice* advertisedDevice) override;
+  void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override;
 
 public:
   std::vector<DiscoveredDevice> getDiscoveredScales() { return discoveredScales; }
