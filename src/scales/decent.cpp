@@ -57,9 +57,24 @@ void DecentScales::update() {
       RemoteScales::log("Failed to reconnect\n");
       return;
     }
+  } else {
+    if (verifyConnected()) {
+      // Send heartbeat every 5 seconds
+      unsigned long now = millis();
+      if (now - lastHeartbeatMillis >= 5000) {
+        sendHeartbeat();
+        lastHeartbeatMillis = now;
+      }
+    }
   }
-  else {
-    verifyConnected();
+}
+
+void DecentScales::sendHeartbeat() {
+  // Heartbeat command: 03 0A 03 FF FF 00 0A
+  if (writeCharacteristic) {
+    uint8_t payload[] = { 0x03, 0x0A, 0x03, 0xFF, 0xFF, 0x00, 0x0A };
+    writeCharacteristic->writeValue(payload, sizeof(payload), false);
+    RemoteScales::log("Heartbeat sent\n");
   }
 }
 
