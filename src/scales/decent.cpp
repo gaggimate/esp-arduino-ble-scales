@@ -81,7 +81,7 @@ void DecentScales::sendHeartbeat() {
 bool DecentScales::tare() {
   if (!verifyConnected())
     return false;
-  uint8_t payload[] = { 0x03, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x0C };
+  uint8_t payload[] = { 0x03, 0x0F, 0x00, 0x00, 0x00, 0x01, 0x0C }; // should also send 01 as the last data byte of the TARE command, for example: “03 0F 01 00 00 01 0C” 
   writeCharacteristic->writeValue(payload, sizeof(payload), false);
   return true;
 };
