@@ -22,6 +22,9 @@ private:
 
   bool markedForReconnection = false;
 
+  unsigned long lastHeartbeatMillis = 0;
+  void sendHeartbeat();
+
   void readCallback(NimBLERemoteCharacteristic* pCharacteristic, uint8_t* pData,
     size_t length, bool isNotify);
 
