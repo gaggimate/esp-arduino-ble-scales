@@ -60,7 +60,7 @@ void WeighMyBrewScales::update() {
 bool WeighMyBrewScales::tare() {
   if (!isConnected()) return false;
   RemoteScales::log("Tare sent");
-  uint8_t payload[6] = { 0x03, 0x0a, 0x01, 0x00, 0x00, 0x08 };
+  uint8_t payload[6] = { 0x03, 0x0a, 0x01, 0x01, 0x00, 0x08 };
   sendMessage(WeighMyBrewMessageType::SYSTEM, payload, sizeof(payload));
 
   return true;
