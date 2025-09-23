@@ -94,7 +94,7 @@ bool WeighMyBrewScales::decodeAndHandleNotification() {
   WeighMyBrewMessageType messageType = static_cast<WeighMyBrewMessageType>(dataBuffer[1]);
   uint8_t productNumber = dataBuffer[0];
 
-  size_t messageLength = dataBuffer.size();
+  const size_t messageLength = RECEIVE_PROTOCOL_LENGTH;
 
   // Handle different message types
   if (productNumber == 0x03 && messageType == WeighMyBrewMessageType::WEIGHT) {
@@ -129,11 +129,11 @@ bool WeighMyBrewScales::decodeAndHandleNotification() {
     RemoteScales::log("Unknown message type %02X: %s\n", messageType, RemoteScales::byteArrayToHexString(dataBuffer.data(), messageLength).c_str());
   }
 
-  // Remove processed message from the buffer
-  dataBuffer.erase(dataBuffer.begin(), dataBuffer.end());
+    // Remove processed message from the buffer
+  dataBuffer.erase(dataBuffer.begin(), dataBuffer.begin() + messageLength);
 
-  // Return whether there's more data to process
-  return dataBuffer.size() < RECEIVE_PROTOCOL_LENGTH;
+    // Return whether there's more data to process
+  return dataBuffer.size() >= RECEIVE_PROTOCOL_LENGTH;
 }
 
 bool WeighMyBrewScales::performConnectionHandshake() {
