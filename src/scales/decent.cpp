@@ -38,11 +38,20 @@ bool DecentScales::connect() {
     return false;
   }
 
+  // Turn on the OLED display after successful connection
+  turnOnOLED();
+
   RemoteScales::setWeight(0.f);
   return true;
 }
 
-void DecentScales::disconnect() { RemoteScales::clientCleanup(); }
+void DecentScales::disconnect() { 
+  // Turn off the OLED display before disconnecting
+  if (isConnected()) {
+    turnOffOLED();
+  }
+  RemoteScales::clientCleanup(); 
+}
 
 bool DecentScales::isConnected() { return RemoteScales::clientIsConnected(); }
 
@@ -75,6 +84,22 @@ void DecentScales::sendHeartbeat() {
     uint8_t payload[] = { 0x03, 0x0A, 0x03, 0xFF, 0xFF, 0x00, 0x0A };
     writeCharacteristic->writeValue(payload, sizeof(payload), false);
     RemoteScales::log("Heartbeat sent\n");
+  }
+}
+
+void DecentScales::turnOnOLED() {
+  if (writeCharacteristic) {
+    uint8_t payload[] = { 0x03, 0x0A, 0x01 };
+    writeCharacteristic->writeValue(payload, sizeof(payload), false);
+    RemoteScales::log("OLED turned on\n");
+  }
+}
+
+void DecentScales::turnOffOLED() {
+  if (writeCharacteristic) {
+    uint8_t payload[] = { 0x03, 0x0A, 0x00 };
+    writeCharacteristic->writeValue(payload, sizeof(payload), false);
+    RemoteScales::log("OLED turned off\n");
   }
 }
 
