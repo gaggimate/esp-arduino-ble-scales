@@ -93,7 +93,7 @@ void RemoteScalesScanner::initializeAsyncScan() {
   // memory after a while.
   NimBLEDevice::getScan()->setScanCallbacks(this, true);
   NimBLEDevice::getScan()->setInterval(500);
-  NimBLEDevice::getScan()->setWindow(500);
+  NimBLEDevice::getScan()->setWindow(100);
   NimBLEDevice::getScan()->setMaxResults(0);
   NimBLEDevice::getScan()->setDuplicateFilter(false);
   NimBLEDevice::getScan()->setActiveScan(true);
@@ -115,7 +115,7 @@ void RemoteScalesScanner::restartAsyncScan() {
 }
 
 void RemoteScalesScanner::onResult(const NimBLEAdvertisedDevice* advertisedDevice) {
-  if (std::string addrStr(reinterpret_cast<const char*>(advertisedDevice->getAddress().getBase()), 6); advertisedDevice->haveName() && alreadySeenAddresses.exists(addrStr)) {
+  if (std::string addrStr(reinterpret_cast<const char*>(advertisedDevice->getAddress().getBase()), 6); alreadySeenAddresses.exists(addrStr)) {
     return;
   }
   if (RemoteScalesPluginRegistry::getInstance()->containsPluginForDevice(DiscoveredDevice(advertisedDevice))) {
