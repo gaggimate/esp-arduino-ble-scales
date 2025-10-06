@@ -54,7 +54,8 @@ private:
       return true;
     }
     const std::string& deviceData = device.getManufacturerData();
-    std::string md = NimBLEUtils::dataToHexString((uint8_t*) deviceData.c_str(), deviceData.length());
+    char *pHex = NimBLEUtils::buildHexData(nullptr, (uint8_t*) deviceData.c_str(), deviceData.length());
+    std::string md(pHex);
     return !md.empty() && deviceName.empty() && (md.find("a6bc") != std::string::npos || md.find("042") == 0);
   }
 };

@@ -8,7 +8,7 @@
 
 class DiscoveredDevice {
 public:
-  DiscoveredDevice(const NimBLEAdvertisedDevice* device) :
+  DiscoveredDevice(NimBLEAdvertisedDevice* device) :
   name(device->getName()), address(device->getAddress()), manufacturerData(device->getManufacturerData()) {}
   const std::string& getName() const { return name; }
   const NimBLEAddress& getAddress() const { return address; }
@@ -67,13 +67,13 @@ private:
 // ---------------------------------------------------------------------------------------
 // ---------------------------   RemoteScalesScanner    -----------------------------------
 // ---------------------------------------------------------------------------------------
-class RemoteScalesScanner : public NimBLEScanCallbacks {
+class RemoteScalesScanner : public NimBLEAdvertisedDeviceCallbacks {
 private:
   bool isRunning = false;
   LRUCache alreadySeenAddresses = LRUCache(100);
   std::vector<DiscoveredDevice> discoveredScales;
   void cleanupDiscoveredScales();
-  void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override;
+  void onResult(NimBLEAdvertisedDevice* advertisedDevice) override;
 
 public:
   std::vector<DiscoveredDevice> getDiscoveredScales() { return discoveredScales; }
