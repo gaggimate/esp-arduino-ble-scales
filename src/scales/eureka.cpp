@@ -93,6 +93,7 @@ void EurekaScales::notifyCallback(
 
 bool EurekaScales::decodeAndHandleNotification() {
   // Minimum message length check (11 bytes based on protocol definition)
+
   if (dataBuffer.size() < RECEIVE_PROTOCOL_LENGTH) {
     return false;
   }
@@ -101,7 +102,7 @@ bool EurekaScales::decodeAndHandleNotification() {
 
   uint8_t productNumber = dataBuffer[0];
 
-  size_t messageLength = dataBuffer.size();
+  const size_t messageLength = RECEIVE_PROTOCOL_LENGTH;
 
   float weight = (dataBuffer[8] << 8) + dataBuffer[7];
 
@@ -112,10 +113,10 @@ bool EurekaScales::decodeAndHandleNotification() {
   RemoteScales::setWeight(weight * 0.1f); // Convert to floating point
 
   // Remove processed message from the buffer
-  dataBuffer.erase(dataBuffer.begin(), dataBuffer.end());
+  dataBuffer.erase(dataBuffer.begin(), dataBuffer.begin() + messageLength);
 
   // Return whether there's more data to process
-  return false;
+  return dataBuffer.size() >= RECEIVE_PROTOCOL_LENGTH;
 }
 
 bool EurekaScales::performConnectionHandshake() {
