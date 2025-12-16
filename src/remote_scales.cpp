@@ -15,6 +15,11 @@ void RemoteScales::log(std::string msgFormat, ...) {
   int length = vsnprintf(nullptr, 0, msgFormat.c_str(), args); // Find length of string
   va_end(args); // End before restarting
 
+  if (length < 0) {
+    logCallback("Scale[" + device.getName() + "] Error: " + std::string(strerror(errno)));
+    return;
+  }
+
   va_start(args, msgFormat); // Restart for the actual printing
   std::string formattedMessage(length + 1, '\0'); // Instantiate formatted strigng with correct length
   vsnprintf(&formattedMessage[0], length + 1, msgFormat.c_str(), args); // print formatted message in the string
