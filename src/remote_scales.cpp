@@ -15,7 +15,7 @@ void RemoteScales::log(std::string msgFormat, ...) {
   int length = vsnprintf(nullptr, 0, msgFormat.c_str(), args); // Find length of string
   va_end(args); // End before restarting
 
-  if (length < 0) {
+  if (length <= 0) {
     logCallback("Scale[" + device.getName() + "] Error: " + std::string(strerror(errno)));
     return;
   }
