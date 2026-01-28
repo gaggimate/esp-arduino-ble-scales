@@ -49,7 +49,7 @@ bool FelicitaScale::tare() {
     if (!verifyConnected()) return false;
     log("Tare command sent.\n");
     uint8_t tareCommand[] = {CMD_TARE};
-    dataCharacteristic->writeValue(tareCommand, sizeof(tareCommand), true);
+    dataCharacteristic->writeValue(tareCommand, sizeof(tareCommand), false);
     return true;
 }
 
@@ -102,7 +102,7 @@ void FelicitaScale::notifyCallback(NimBLERemoteCharacteristic* characteristic, u
 void FelicitaScale::parseStatusUpdate(const uint8_t* data, size_t length) {
     float weight = static_cast<float>(parseWeight(data)) / 100.0f;
     setWeight(weight);
-    log("Weight updated: %.1f g\n", weight);
+    // log("Weight updated: %.1f g\n", weight);
 }
 
 int32_t FelicitaScale::parseWeight(const uint8_t* data) {

@@ -50,7 +50,7 @@ public:
 private:
   static bool handles(const DiscoveredDevice& device) {
     const std::string& deviceName = device.getName();
-    if (!deviceName.empty() && deviceName.find("CFS-9002") == 0) {
+    if (!deviceName.empty() && (deviceName.find("CFS-9002") == 0 || deviceName.find("LSJ-001") == 0)) {
       return true;
     }
     const std::string& deviceData = device.getManufacturerData();

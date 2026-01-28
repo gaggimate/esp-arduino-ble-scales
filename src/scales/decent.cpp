@@ -38,11 +38,20 @@ bool DecentScales::connect() {
     return false;
   }
 
+  // Turn on the OLED display after successful connection
+  turnOnOLED();
+
   RemoteScales::setWeight(0.f);
   return true;
 }
 
-void DecentScales::disconnect() { RemoteScales::clientCleanup(); }
+void DecentScales::disconnect() { 
+  // Turn off the OLED display before disconnecting
+  if (isConnected()) {
+    turnOffOLED();
+  }
+  RemoteScales::clientCleanup(); 
+}
 
 bool DecentScales::isConnected() { return RemoteScales::clientIsConnected(); }
 
@@ -57,16 +66,47 @@ void DecentScales::update() {
       RemoteScales::log("Failed to reconnect\n");
       return;
     }
+  } else {
+    if (verifyConnected()) {
+      // Send heartbeat every 5 seconds
+      unsigned long now = millis();
+      if (now - lastHeartbeatMillis >= 5000) {
+        sendHeartbeat();
+        lastHeartbeatMillis = now;
+      }
+    }
   }
-  else {
-    verifyConnected();
+}
+
+void DecentScales::sendHeartbeat() {
+  // Heartbeat command: 03 0A 03 FF FF 00 0A
+  if (writeCharacteristic) {
+    uint8_t payload[] = { 0x03, 0x0A, 0x03, 0xFF, 0xFF, 0x00, 0x0A };
+    writeCharacteristic->writeValue(payload, sizeof(payload), false);
+    RemoteScales::log("Heartbeat sent\n");
+  }
+}
+
+void DecentScales::turnOnOLED() {
+  if (writeCharacteristic) {
+    uint8_t payload[] = { 0x03, 0x0A, 0x01 };
+    writeCharacteristic->writeValue(payload, sizeof(payload), false);
+    RemoteScales::log("OLED turned on\n");
+  }
+}
+
+void DecentScales::turnOffOLED() {
+  if (writeCharacteristic) {
+    uint8_t payload[] = { 0x03, 0x0A, 0x00 };
+    writeCharacteristic->writeValue(payload, sizeof(payload), false);
+    RemoteScales::log("OLED turned off\n");
   }
 }
 
 bool DecentScales::tare() {
   if (!verifyConnected())
     return false;
-  uint8_t payload[] = { 0x03, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x0C };
+  uint8_t payload[] = { 0x03, 0x0F, 0x00, 0x00, 0x00, 0x01, 0x0C }; // should also send 01 as the last data byte of the TARE command, for example: “03 0F 01 00 00 01 0C” 
   writeCharacteristic->writeValue(payload, sizeof(payload), false);
   return true;
 };
