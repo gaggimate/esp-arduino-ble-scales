@@ -56,7 +56,7 @@ bool myscale::tare() {
         0x00, 0x00, 0xD2, 0xD2
     };
 
-    auto writeChar = service->getCharacteristic(WRITE_CHARACTERISTIC_UUID);
+    auto writeChar = writeCharacteristic;
     if (!writeChar) {
         log("Write characteristic not found.\n");
         return false;
@@ -93,6 +93,13 @@ bool myscale::performConnectionHandshake() {
         });
     } else {
         log("Notifications not supported.\n");
+        return false;
+    }
+
+    // Cache write characteristic once to avoid blocking discovery during tare
+    writeCharacteristic = service->getCharacteristic(WRITE_CHARACTERISTIC_UUID);
+    if (!writeCharacteristic) {
+        log("Write characteristic not found during handshake.\n");
         return false;
     }
     
