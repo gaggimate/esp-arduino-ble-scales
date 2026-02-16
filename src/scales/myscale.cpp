@@ -4,6 +4,7 @@
 // Initialize UUID constants
 const NimBLEUUID myscale::DATA_SERVICE_UUID("0000FFB0-0000-1000-8000-00805F9B34FB");
 const NimBLEUUID myscale::DATA_CHARACTERISTIC_UUID("0000FFB2-0000-1000-8000-00805F9B34FB");
+const NimBLEUUID myscale::WRITE_CHARACTERISTIC_UUID("0000FFB1-0000-1000-8000-00805F9B34FB");
 
 myscale::myscale(const DiscoveredDevice& device) : RemoteScales(device) {}
 
@@ -46,9 +47,24 @@ void myscale::update() {
 }
 
 bool myscale::tare() {
-    // Scale has no tare capability
-    return false;
+    if (!isConnected()) return false;
 
+    // Hex value to send on tare
+    uint8_t tare_value[] = {
+        0xAC, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0xD2, 0xD2
+    };
+
+    auto writeChar = writeCharacteristic;
+    if (!writeChar) {
+        log("Write characteristic not found.\n");
+        return false;
+    }
+
+    writeChar->writeValue(tare_value, sizeof(tare_value), false); // write without response
+    log("Tare command sent.\n");
+    return true;
 }
 
 bool myscale::performConnectionHandshake() {
@@ -77,6 +93,13 @@ bool myscale::performConnectionHandshake() {
         });
     } else {
         log("Notifications not supported.\n");
+        return false;
+    }
+
+    // Cache write characteristic once to avoid blocking discovery during tare
+    writeCharacteristic = service->getCharacteristic(WRITE_CHARACTERISTIC_UUID);
+    if (!writeCharacteristic) {
+        log("Write characteristic not found during handshake.\n");
         return false;
     }
     

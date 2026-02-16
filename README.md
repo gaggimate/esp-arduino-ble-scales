@@ -22,6 +22,7 @@ This allows for easy extention of the library for more bluetooth enabled scales.
 * [Varia AKU /Mini](https://www.variabrewing.com/products/varia-aku-scale) - [Tested]
 * [Varia AKU Pro](https://www.variabrewing.com/collections/aku-new/products/varia-aku-pro)
 * [Eureka Precisa](https://www.eureka.co.it/de/accessory/id/187.aspx)
+* [Smart Kitchen Scale / MyScale (Model: KP2048B)](https://de.aliexpress.com/item/1005005916581185.html)  [Tested]
 
 Want a specific model? Implement it 🚀 Read on to find out how... 
 
