@@ -9,14 +9,16 @@
 class DiscoveredDevice {
 public:
   DiscoveredDevice(NimBLEAdvertisedDevice* device) :
-  name(device->getName()), address(device->getAddress()), manufacturerData(device->getManufacturerData()) {}
+  name(device->getName()), address(device->getAddress()), manufacturerData(device->getManufacturerData()), rssi(device->getRSSI()) {}
   const std::string& getName() const { return name; }
   const NimBLEAddress& getAddress() const { return address; }
   const std::string& getManufacturerData() const { return manufacturerData; }
+  const int getRSSI() const { return rssi; }
 private:
   std::string name;
   NimBLEAddress address;
   std::string manufacturerData;
+  int rssi;
 };
 
 class RemoteScales {
@@ -31,6 +33,7 @@ public:
 
   std::string getDeviceName() const { return device.getName(); }
   std::string getDeviceAddress() const { return device.getAddress().toString(); }
+  int getRSSI() const { return client != nullptr ? client->getRssi() : 0; }
 
   virtual bool tare() = 0;
   virtual bool isConnected() = 0;
