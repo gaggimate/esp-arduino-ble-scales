@@ -162,7 +162,7 @@ bool BookooScales::performConnectionHandshake() {
   NimBLERemoteDescriptor* notifyDescriptor = weightCharacteristic->getDescriptor(NimBLEUUID((uint16_t)0x2902));
   RemoteScales::log("Got notifyDescriptor\n");
   if (notifyDescriptor != nullptr) {
-    uint8_t value[2] = { 0x00, 0x01 };
+    uint8_t value[2] = { 0x01, 0x00 }; // CCCD: enable notifications (0x0001 little-endian)
     notifyDescriptor->writeValue(value, 2, true);
   }
   else {
