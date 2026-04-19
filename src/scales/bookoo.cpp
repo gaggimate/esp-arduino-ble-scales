@@ -81,6 +81,32 @@ bool BookooScales::tare() {
   return true;
 };
 
+// Note: on Bookoo Ultra these commands are only effective in timing-mode /
+// ratio-mode — on weighing-mode they silently no-op. The protocol has no BLE
+// command to switch modes, so the user must set the scale mode physically.
+// Bookoo Mini has no mode restrictions. Use tare() (0x07 = tare + start timer)
+// if you want an unconditional timer start.
+void BookooScales::startTimer() {
+  if (!isConnected()) return;
+  RemoteScales::log("StartTimer sent (cmd 0x04)");
+  uint8_t payload[6] = { 0x03, 0x0A, 0x04, 0x00, 0x00, 0x00 };
+  sendMessage(payload, sizeof(payload));
+}
+
+void BookooScales::stopTimer() {
+  if (!isConnected()) return;
+  RemoteScales::log("StopTimer sent (cmd 0x05)");
+  uint8_t payload[6] = { 0x03, 0x0A, 0x05, 0x00, 0x00, 0x00 };
+  sendMessage(payload, sizeof(payload));
+}
+
+void BookooScales::resetTimer() {
+  if (!isConnected()) return;
+  RemoteScales::log("ResetTimer sent (cmd 0x06)");
+  uint8_t payload[6] = { 0x03, 0x0A, 0x06, 0x00, 0x00, 0x00 };
+  sendMessage(payload, sizeof(payload));
+}
+
 void BookooScales::disableScaleSmoothing() {
   if (!isConnected()) return;
   RemoteScales::log("Flow-smoothing OFF (cmd 0x08 0x00)");
