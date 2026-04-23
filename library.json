@@ -1,16 +1,24 @@
 {
   "name": "esp-arduino-ble-scales",
   "description": "Bluetooth scales library for ESP32 on Arduino framework. Supports Acaia, Bookoo, Decent, Difluid, Eclair, Felicita, Timemore, Varia, and more.",
-  "keywords": ["ble", "bluetooth", "scales", "esp32", "nimble"],
+  "keywords": [
+    "ble",
+    "bluetooth",
+    "scales",
+    "esp32",
+    "nimble"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/gaggimate/esp-arduino-ble-scales"
   },
-  "frameworks": ["arduino"],
-  "platforms": ["espressif32"],
-  "dependencies": {
-    "h2zero/NimBLE-Arduino": "^2.5.0"
-  },
+  "frameworks": [
+    "arduino"
+  ],
+  "platforms": [
+    "espressif32"
+  ],
+  "dependencies": {},
   "build": {
     "srcFilter": "+<*> -<main.cpp>"
   }
