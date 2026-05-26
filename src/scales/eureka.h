@@ -55,7 +55,11 @@ private:
     }
     const std::string& deviceData = device.getManufacturerData();
     char *pHex = NimBLEUtils::buildHexData(nullptr, (uint8_t*) deviceData.c_str(), deviceData.length());
+    if (pHex == nullptr) {
+      return false;
+    }
     std::string md(pHex);
+    free(pHex); // buildHexData(target=nullptr,...) malloc's and transfers ownership; must free or it leaks per advertisement
     return !md.empty() && deviceName.empty() && (md.find("a6bc") != std::string::npos || md.find("042") == 0);
   }
 };
