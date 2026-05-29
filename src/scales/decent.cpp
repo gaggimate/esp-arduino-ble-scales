@@ -89,20 +89,18 @@ void DecentScales::sendHeartbeat() {
 
 void DecentScales::turnOnOLED() {
   if (writeCharacteristic) {
-    uint8_t payload1[] = { 0x03, 0x0A, 0x01, 0x00, 0x00, 0x01, 0x09 };
-    writeCharacteristic->writeValue(payload1, sizeof(payload1), false);
-    uint8_t payload2[] = { 0x03, 0x0A, 0x04, 0x00, 0x00, 0x01, 0x0C };
-    writeCharacteristic->writeValue(payload2, sizeof(payload2), false);
+    // 030A 01 01 00 01 08 - weight+timer LEDs on, grams, heartbeat maintained
+    uint8_t payload[] = { 0x03, 0x0A, 0x01, 0x01, 0x00, 0x01, 0x08 };
+    writeCharacteristic->writeValue(payload, sizeof(payload), false);
     RemoteScales::log("OLED turned on\n");
   }
 }
 
 void DecentScales::turnOffOLED() {
   if (writeCharacteristic) {
-    uint8_t payload1[] = { 0x03, 0x0A, 0x04, 0x01, 0x00, 0x01, 0x0D };
-    writeCharacteristic->writeValue(payload1, sizeof(payload1), false);
-    uint8_t payload2[] = { 0x03, 0x0A, 0x00, 0x01, 0x00, 0x01, 0x09 };
-    writeCharacteristic->writeValue(payload2, sizeof(payload2), false);
+    // 030A 00 00 00 01 08 - weight+timer LEDs off, grams, heartbeat maintained
+    uint8_t payload[] = { 0x03, 0x0A, 0x00, 0x00, 0x00, 0x01, 0x08 };
+    writeCharacteristic->writeValue(payload, sizeof(payload), false);
     RemoteScales::log("OLED turned off\n");
   }
 }
