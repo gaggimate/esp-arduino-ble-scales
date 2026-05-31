@@ -89,7 +89,8 @@ void DecentScales::sendHeartbeat() {
 
 void DecentScales::turnOnOLED() {
   if (writeCharacteristic) {
-    uint8_t payload[] = { 0x03, 0x0A, 0x01 };
+    // 030A 01 01 00 01 08 - weight+timer LEDs on, grams, heartbeat maintained
+    uint8_t payload[] = { 0x03, 0x0A, 0x01, 0x01, 0x00, 0x01, 0x08 };
     writeCharacteristic->writeValue(payload, sizeof(payload), false);
     RemoteScales::log("OLED turned on\n");
   }
@@ -97,7 +98,8 @@ void DecentScales::turnOnOLED() {
 
 void DecentScales::turnOffOLED() {
   if (writeCharacteristic) {
-    uint8_t payload[] = { 0x03, 0x0A, 0x00 };
+    // 030A 00 00 00 01 08 - weight+timer LEDs off, grams, heartbeat maintained
+    uint8_t payload[] = { 0x03, 0x0A, 0x00, 0x00, 0x00, 0x01, 0x08 };
     writeCharacteristic->writeValue(payload, sizeof(payload), false);
     RemoteScales::log("OLED turned off\n");
   }
@@ -106,7 +108,8 @@ void DecentScales::turnOffOLED() {
 bool DecentScales::tare() {
   if (!verifyConnected())
     return false;
-  uint8_t payload[] = { 0x03, 0x0F, 0x00, 0x00, 0x00, 0x01, 0x0C }; // should also send 01 as the last data byte of the TARE command, for example: “03 0F 01 00 00 01 0C” 
+  // 030F 000000 01 0D - tare, leaves heartbeat as set (data[5]=0x01)
+  uint8_t payload[] = { 0x03, 0x0F, 0x00, 0x00, 0x00, 0x01, 0x0D };
   writeCharacteristic->writeValue(payload, sizeof(payload), false);
   return true;
 };
