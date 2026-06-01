@@ -59,7 +59,7 @@ bool TimemoreDotScales::connect() {
 
   // The Dot will not emit weight notifications until the link is encrypted.
   // Look the client back up by peer address since RemoteScales keeps it private.
-  NimBLEClient* nimbleClient = NimBLEDevice::getClientByPeerAddress(NimBLEAddress(RemoteScales::getDeviceAddress()));
+  NimBLEClient* nimbleClient = NimBLEDevice::getClientByPeerAddress(RemoteScales::getDevice().getAddress());
   if (nimbleClient == nullptr || !nimbleClient->secureConnection()) {
     RemoteScales::log("secureConnection failed\n");
     clientCleanup();
