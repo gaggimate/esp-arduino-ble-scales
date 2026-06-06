@@ -164,6 +164,11 @@ bool TimemoreDotScales::decodeAndHandleNotification() {
                   (static_cast<int32_t>(dataBuffer[8]) << 8)  |
                    static_cast<int32_t>(dataBuffer[9]);
     RemoteScales::setWeight(raw / 10.0f);
+  } else if (cls == 0x01 && type == 0x05 && payloadLen == 2) {
+    // Battery frame, emitted roughly every 30 s. payload[0] has been observed
+    // as a fixed 0x02 prefix (likely a status/category code); payload[1] is
+    // battery percentage 0-100.
+    RemoteScales::setBatteryLevel(dataBuffer[7]);
   } else {
     RemoteScales::log("Unhandled frame cls=%02X type=%02X len=%u\n",
                       cls, type, (unsigned)payloadLen);
