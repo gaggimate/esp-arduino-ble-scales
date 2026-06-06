@@ -16,6 +16,8 @@ public:
   bool isConnected() override;
   bool tare() override;
 
+  bool hasBatteryLevel() const override { return true; }
+
 private:
   bool markedForReconnection = false;
 
