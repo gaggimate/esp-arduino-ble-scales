@@ -60,6 +60,7 @@ bool TimemoreDotScales::connect() {
   // The Dot will not emit weight notifications until the link is encrypted.
   // Look the client back up by peer address since RemoteScales keeps it private.
   NimBLEClient* nimbleClient = NimBLEDevice::getClientByPeerAddress(NimBLEAddress(RemoteScales::getDeviceAddress()));
+  NimBLEDevice::setSecurityAuth(true, false, true);
   if (nimbleClient == nullptr || !nimbleClient->secureConnection()) {
     RemoteScales::log("secureConnection failed\n");
     clientCleanup();
@@ -89,7 +90,7 @@ bool TimemoreDotScales::isConnected() {
 
 void TimemoreDotScales::update() {
   if (markedForReconnection) {
-    RemoteScales::log("Marked for disconnection. Will attempt to reconnect.\n");
+    RemoteScales::log("Marked for reconnection. Will attempt to reconnect.\n");
     RemoteScales::clientCleanup();
     if (!connect()) {
       RemoteScales::log("Reconnect failed; will retry on next update\n");
@@ -101,14 +102,14 @@ void TimemoreDotScales::update() {
 
 bool TimemoreDotScales::tare() {
   if (!isConnected() || commandCharacteristic == nullptr) return false;
-  if (!commandCharacteristic->writeValue(TARE_CMD, sizeof(TARE_CMD), true)) {
+  if (!commandCharacteristic->writeValue(TARE_CMD, sizeof(TARE_CMD), false)) {
     RemoteScales::log("Tare write failed\n");
     return false;
   }
   // The scale ACKs the tare command but only actually zeros the reading after
   // receiving the status poll. Use waitResponse=true so a queue/GATT failure
   // surfaces here rather than being silently dropped.
-  if (!commandCharacteristic->writeValue(HANDSHAKE_CMD, sizeof(HANDSHAKE_CMD), true)) {
+  if (!commandCharacteristic->writeValue(HANDSHAKE_CMD, sizeof(HANDSHAKE_CMD), false)) {
     RemoteScales::log("Tare follow-up poll failed; scale will not zero\n");
     return false;
   }
