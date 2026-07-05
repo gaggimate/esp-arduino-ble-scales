@@ -82,19 +82,13 @@ bool myscale::performConnectionHandshake() {
         return false;
     }
 
-    if (dataCharacteristic->canNotify()) {
-        auto cccd = dataCharacteristic->getDescriptor(NimBLEUUID((uint16_t)0x2902));
-        if (cccd) {
-            uint8_t notifyOn[] = {0x01, 0x00};
-            cccd->writeValue(notifyOn, 2, true); // enable notifications
-        }
-        dataCharacteristic->subscribe(true, [this](NimBLERemoteCharacteristic* characteristic, uint8_t* data, size_t length, bool isNotify) {
-            notifyCallback(characteristic, data, length, isNotify);
-        });
-    } else {
+    if (!dataCharacteristic->canNotify()) {
         log("Notifications not supported.\n");
         return false;
     }
+    dataCharacteristic->subscribe(true, [this](NimBLERemoteCharacteristic* characteristic, uint8_t* data, size_t length, bool isNotify) {
+        notifyCallback(characteristic, data, length, isNotify);
+    });
 
     // Cache write characteristic once to avoid blocking discovery during tare
     writeCharacteristic = service->getCharacteristic(WRITE_CHARACTERISTIC_UUID);
