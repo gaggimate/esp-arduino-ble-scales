@@ -3,6 +3,8 @@
 #include "remote_scales_plugin_registry.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <algorithm>
+#include <cctype>
 #include <vector>
 #include <memory>
 
@@ -17,6 +19,10 @@ public:
   bool tare() override;
 
   bool hasBatteryLevel() const override { return true; }
+  bool hasTimerControl() const override { return true; }
+  void startTimer() override;
+  void stopTimer() override;
+  void resetTimer() override;
 
 private:
   bool markedForReconnection = false;
@@ -29,7 +35,6 @@ private:
 
   bool performConnectionHandshake();
   bool subscribeToNotifications();
-  void sendHandshake();
 
   void notifyCallback(NimBLERemoteCharacteristic* characteristic, uint8_t* data, size_t length, bool isNotify);
   bool decodeAndHandleNotification();
@@ -48,7 +53,21 @@ public:
 
 private:
   static bool handles(const DiscoveredDevice& device) {
+    // Match on name: the Dot advertises as "TIMEMORE DOT" / "TIMEMORE_Dot"
+    // (case-insensitive "dot", plus the TES017 model code). Outside pairing
+    // mode the scale can advertise service UUIDs with no name at all, so
+    // fall back to the 0xFFF0 service being present in the advertisement.
     const std::string& deviceName = device.getName();
-    return !deviceName.empty() && deviceName.find("TIMEMORE_Dot") == 0;
+    if (!deviceName.empty()) {
+      std::string lower = deviceName;
+      std::transform(lower.begin(), lower.end(), lower.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+      if (lower.find("dot") != std::string::npos ||
+          lower.find("tes017") != std::string::npos) {
+        return true;
+      }
+    }
+    return device.advertisesService(NimBLEUUID("FFF0")) ||
+           device.advertisesService(NimBLEUUID("0000fff0-0000-1000-8000-00805f9b34fb"));
   }
 };

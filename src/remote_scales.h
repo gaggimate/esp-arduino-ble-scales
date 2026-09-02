@@ -9,16 +9,32 @@
 class DiscoveredDevice {
 public:
   DiscoveredDevice(const NimBLEAdvertisedDevice* device) :
-  name(device->getName()), address(device->getAddress()), manufacturerData(device->getManufacturerData()), rssi(device->getRSSI()) {}
+  name(device->getName()), address(device->getAddress()), manufacturerData(device->getManufacturerData()), rssi(device->getRSSI()) {
+    // Snapshot the advertised service UUIDs: some scales (e.g. the Timemore
+    // Dot outside pairing mode) advertise service UUIDs but no name, so
+    // name-only matching would never find them.
+    const size_t n = device->getServiceUUIDCount();
+    serviceUuids.reserve(n);
+    for (size_t i = 0; i < n; i++) {
+      serviceUuids.emplace_back(device->getServiceUUID(i));
+    }
+  }
   const std::string& getName() const { return name; }
   const NimBLEAddress& getAddress() const { return address; }
   const std::string& getManufacturerData() const { return manufacturerData; }
   const int getRSSI() const { return rssi; }
+  bool advertisesService(const NimBLEUUID& uuid) const {
+    for (const auto& s : serviceUuids) {
+      if (s == uuid) return true;
+    }
+    return false;
+  }
 private:
   std::string name;
   NimBLEAddress address;
   std::string manufacturerData;
   int rssi;
+  std::vector<NimBLEUUID> serviceUuids;
 };
 
 // Weight unit reported by the scale. Some BLE espresso scales can switch to
