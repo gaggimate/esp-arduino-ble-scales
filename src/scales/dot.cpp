@@ -3,27 +3,38 @@
 
 // Timemore Dot — single-sensor BLE scale.
 //
-// Frame layout (big-endian):
-//   [A5 5A] [class] [type] [len_hi len_lo] [payload...] [crc_hi crc_lo]
-//      2       1      1         2              len            2
+// Framed protocol (same as the official Timemore client, verified against a
+// real Dot):
+//   [A5 5A] [opcode] [cmdId] [len_hi len_lo] [payload...] [crc_hi crc_lo]
+//      2       1       1          2              len            2
 // Total frame length = len + 8.
 //
-// Weight notification: class=0x01, type=0x01, payload_len=0x0009.
-// Frame bytes [6..9] = signed BE int32 grams * 10. Bytes [10..14] are
-// additional payload (likely flow / secondary metric) the driver ignores;
-// bytes [15..16] are the frame CRC trailer.
+// Weight notification: opcode 0x01, cmdId 0x01, payload_len 9. Payload bytes
+// [0..3] = signed BE int32 grams * 10; the remaining payload (flow / secondary
+// metric) is ignored by this driver.
 
 const NimBLEUUID serviceUUID("FFF0");
 const NimBLEUUID weightCharacteristicUUID("FFF1");
 const NimBLEUUID commandCharacteristicUUID("FFF2");
 
-// Captured via iOS PacketLogger; CRC trailers are scale-specific and hardcoded
-// from the capture rather than computed.
-static const uint8_t TARE_CMD[]      = { 0xA5, 0x5A, 0x02, 0x04, 0x00, 0x00, 0x9A, 0x00 };
-static const uint8_t HANDSHAKE_CMD[] = { 0xA5, 0x5A, 0x03, 0x0D, 0x00, 0x00, 0x64, 0xD1 };
+// Tare command = A5 5A 03 0D 00 00 + CRC16/IBM (0x64D1), byte-identical to the
+// official client's buildFrame(0x03, 0x0D). The Dot zeroes on this command.
+static const uint8_t TARE_CMD[] = { 0xA5, 0x5A, 0x03, 0x0D, 0x00, 0x00, 0x64, 0xD1 };
+// Timer commands = buildFrame(0x03, 0x02, {0x01|0x02|0x03}) with CRC16/IBM
+// (payload 01=start, 02=stop, 03=reset), matching the official client's
+// setTimer().
+static const uint8_t TIMER_START_CMD[] = { 0xA5, 0x5A, 0x03, 0x02, 0x00, 0x01, 0x01, 0x18, 0x67 };
+static const uint8_t TIMER_STOP_CMD[]  = { 0xA5, 0x5A, 0x03, 0x02, 0x00, 0x01, 0x02, 0x19, 0x27 };
+static const uint8_t TIMER_RESET_CMD[] = { 0xA5, 0x5A, 0x03, 0x02, 0x00, 0x01, 0x03, 0xD9, 0xE6 };
+// Post-connect init sequence (mirrors the official client): set unit to gram,
+// set mode to standard, request battery. The Dot only reports weight after
+// unit/mode are set.
+static const uint8_t INIT_UNIT_CMD[]    = { 0xA5, 0x5A, 0x03, 0x06, 0x00, 0x01, 0x00, 0xE8, 0xA7 };
+static const uint8_t INIT_MODE_CMD[]    = { 0xA5, 0x5A, 0x03, 0x08, 0x00, 0x02, 0x01, 0x00, 0xEB, 0x31 };
+static const uint8_t INIT_BATTERY_CMD[] = { 0xA5, 0x5A, 0x02, 0x05, 0x00, 0x00, 0x5A, 0x51 };
 
 static constexpr size_t FRAME_HEADER_LEN = 8;
-// Generous upper bound — known frames are <=12 bytes of payload. A glitched
+// Generous upper bound — known frames are <=9 bytes of payload. A glitched
 // notification with a bogus length would otherwise stall the parser while the
 // internal buffer grew waiting for bytes that never arrive.
 static constexpr uint16_t MAX_PAYLOAD_LEN = 64;
@@ -57,13 +68,16 @@ bool TimemoreDotScales::connect() {
     return false;
   }
 
-  // The Dot will not emit weight notifications until the link is encrypted.
-  // Look the client back up by peer address since RemoteScales keeps it private.
-  NimBLEClient* nimbleClient = NimBLEDevice::getClientByPeerAddress(RemoteScales::getDevice().getAddress());
-  if (nimbleClient == nullptr || !nimbleClient->secureConnection()) {
-    RemoteScales::log("secureConnection failed\n");
-    clientCleanup();
-    return false;
+  // The real Dot requires no pairing/encryption — the official app connects
+  // directly. Some units briefly hold the link open on their side after a
+  // previous session, so retry the plain connection before giving up (done
+  // above). A best-effort security attempt is harmless but never fatal.
+  NimBLEClient* nimbleClient = NimBLEDevice::getClientByPeerAddress(NimBLEAddress(RemoteScales::getDeviceAddress()));
+  if (nimbleClient != nullptr) {
+    NimBLEDevice::setSecurityAuth(true, false, true);
+    if (!nimbleClient->secureConnection()) {
+      RemoteScales::log("secureConnection failed, continuing unencrypted\n");
+    }
   }
 
   if (!performConnectionHandshake()) {
@@ -74,7 +88,16 @@ bool TimemoreDotScales::connect() {
     clientCleanup();
     return false;
   }
-  sendHandshake();
+  // The Dot only reports weight after being told the unit and mode; without
+  // this init sequence the scale stays silent. Timings mirror the official
+  // client (TimemoreScale::sendInitSequence). Blocking is fine here — connect()
+  // runs from the caller's task, not a NimBLE stack callback.
+  delay(500);
+  commandCharacteristic->writeValue(INIT_UNIT_CMD, sizeof(INIT_UNIT_CMD), false);
+  delay(200);
+  commandCharacteristic->writeValue(INIT_MODE_CMD, sizeof(INIT_MODE_CMD), false);
+  delay(100);
+  commandCharacteristic->writeValue(INIT_BATTERY_CMD, sizeof(INIT_BATTERY_CMD), false);
   RemoteScales::setWeight(0.f);
   return true;
 }
@@ -89,7 +112,7 @@ bool TimemoreDotScales::isConnected() {
 
 void TimemoreDotScales::update() {
   if (markedForReconnection) {
-    RemoteScales::log("Marked for disconnection. Will attempt to reconnect.\n");
+    RemoteScales::log("Marked for reconnection. Will attempt to reconnect.\n");
     RemoteScales::clientCleanup();
     if (!connect()) {
       RemoteScales::log("Reconnect failed; will retry on next update\n");
@@ -101,18 +124,29 @@ void TimemoreDotScales::update() {
 
 bool TimemoreDotScales::tare() {
   if (!isConnected() || commandCharacteristic == nullptr) return false;
-  if (!commandCharacteristic->writeValue(TARE_CMD, sizeof(TARE_CMD), true)) {
+  if (!commandCharacteristic->writeValue(TARE_CMD, sizeof(TARE_CMD), false)) {
     RemoteScales::log("Tare write failed\n");
     return false;
   }
-  // The scale ACKs the tare command but only actually zeros the reading after
-  // receiving the status poll. Use waitResponse=true so a queue/GATT failure
-  // surfaces here rather than being silently dropped.
-  if (!commandCharacteristic->writeValue(HANDSHAKE_CMD, sizeof(HANDSHAKE_CMD), true)) {
-    RemoteScales::log("Tare follow-up poll failed; scale will not zero\n");
-    return false;
-  }
   return true;
+}
+
+void TimemoreDotScales::startTimer() {
+  if (commandCharacteristic != nullptr) {
+    commandCharacteristic->writeValue(TIMER_START_CMD, sizeof(TIMER_START_CMD), false);
+  }
+}
+
+void TimemoreDotScales::stopTimer() {
+  if (commandCharacteristic != nullptr) {
+    commandCharacteristic->writeValue(TIMER_STOP_CMD, sizeof(TIMER_STOP_CMD), false);
+  }
+}
+
+void TimemoreDotScales::resetTimer() {
+  if (commandCharacteristic != nullptr) {
+    commandCharacteristic->writeValue(TIMER_RESET_CMD, sizeof(TIMER_RESET_CMD), false);
+  }
 }
 
 //-----------------------------------------------------------------------------------/
@@ -154,24 +188,26 @@ bool TimemoreDotScales::decodeAndHandleNotification() {
   size_t frameLen = static_cast<size_t>(payloadLen) + FRAME_HEADER_LEN;
   if (dataBuffer.size() < frameLen) return false;
 
-  uint8_t cls  = dataBuffer[2];
-  uint8_t type = dataBuffer[3];
+  uint8_t opcode = dataBuffer[2];
+  uint8_t cmdId  = dataBuffer[3];
 
-  if (cls == 0x01 && type == 0x01 && payloadLen == 9) {
+  if ((opcode == 0x01 || opcode == 0x02) && cmdId == 0x01 && payloadLen >= 8) {
     // Weight frame. Signed big-endian int32 at bytes [6..9], 0.1 g resolution.
     int32_t raw = (static_cast<int32_t>(dataBuffer[6]) << 24) |
                   (static_cast<int32_t>(dataBuffer[7]) << 16) |
                   (static_cast<int32_t>(dataBuffer[8]) << 8)  |
                    static_cast<int32_t>(dataBuffer[9]);
     RemoteScales::setWeight(raw / 10.0f);
-  } else if (cls == 0x01 && type == 0x05 && payloadLen == 2) {
-    // Battery frame, emitted roughly every 30 s. payload[0] has been observed
-    // as a fixed 0x02 prefix (likely a status/category code); payload[1] is
-    // battery percentage 0-100.
-    RemoteScales::setBatteryLevel(dataBuffer[7]);
+  } else if ((opcode == 0x01 || opcode == 0x02) && cmdId == 0x05 && payloadLen >= 1) {
+    // Battery frame. Payload byte 1 (fallback byte 0) is the percentage.
+    if (dataBuffer[7] <= 100) {
+      RemoteScales::setBatteryLevel(dataBuffer[7]);
+    } else if (dataBuffer[6] <= 100) {
+      RemoteScales::setBatteryLevel(dataBuffer[6]);
+    }
   } else {
-    RemoteScales::log("Unhandled frame cls=%02X type=%02X len=%u\n",
-                      cls, type, (unsigned)payloadLen);
+    RemoteScales::log("Unhandled frame op=%02X cmd=%02X len=%u\n",
+                      opcode, cmdId, (unsigned)payloadLen);
   }
 
   dataBuffer.erase(dataBuffer.begin(), dataBuffer.begin() + frameLen);
@@ -206,7 +242,3 @@ bool TimemoreDotScales::subscribeToNotifications() {
   return weightCharacteristic->subscribe(false, callback);
 }
 
-void TimemoreDotScales::sendHandshake() {
-  if (commandCharacteristic == nullptr) return;
-  commandCharacteristic->writeValue(HANDSHAKE_CMD, sizeof(HANDSHAKE_CMD), false);
-}
