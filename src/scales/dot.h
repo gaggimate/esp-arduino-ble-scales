@@ -3,6 +3,8 @@
 #include "remote_scales_plugin_registry.h"
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <algorithm>
+#include <cctype>
 #include <vector>
 #include <memory>
 
@@ -49,6 +51,15 @@ public:
 private:
   static bool handles(const DiscoveredDevice& device) {
     const std::string& deviceName = device.getName();
-    return !deviceName.empty() && deviceName.find("TIMEMORE_Dot") == 0;
+    if (deviceName.empty()) return false;
+    if (deviceName.find("TIMEMORE_Dot") == 0) return true;
+
+    // Basic 3.0 Link advertises as "Basic3 Link" (confirmed on real hardware,
+    // model TES016) and reuses the Dot GATT protocol (FFF0/FFF1/FFF2), per
+    // Beanconqueror's TimemoreBasicScale matcher.
+    std::string lower(deviceName);
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return std::tolower(c); });
+    return lower.find("basic3") != std::string::npos || lower.find("basic 3") != std::string::npos ||
+           (lower.find("timemore") != std::string::npos && lower.find("basic") != std::string::npos);
   }
 };

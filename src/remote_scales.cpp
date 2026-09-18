@@ -121,11 +121,18 @@ void RemoteScalesScanner::restartAsyncScan() {
 }
 
 void RemoteScalesScanner::onResult(const NimBLEAdvertisedDevice* advertisedDevice) {
-  if (std::string addrStr(reinterpret_cast<const char*>(advertisedDevice->getAddress().getVal()), 6); alreadySeenAddresses.exists(addrStr)) {
-    return;
-  }
+  // Only dedupe addresses that have already matched a plugin. A device whose
+  // local name arrives in a separate scan-response packet (common: many
+  // peripherals omit the name from the primary ADV_IND to save space) would
+  // otherwise fail containsPluginForDevice() on the first, nameless callback,
+  // get cached as "seen" regardless, and then be silently ignored forever
+  // once the scan response with the real name arrives — even though it's
+  // the same NimBLEAdvertisedDevice object, now updated in place.
+  std::string addrStr(reinterpret_cast<const char*>(advertisedDevice->getAddress().getVal()), 6);
   if (RemoteScalesPluginRegistry::getInstance()->containsPluginForDevice(advertisedDevice)) {
-    discoveredScales.emplace_back(advertisedDevice);
+    if (!alreadySeenAddresses.exists(addrStr)) {
+      discoveredScales.emplace_back(advertisedDevice);
+    }
   }
 }
 
