@@ -46,10 +46,14 @@ void RemoteScales::setWeightUpdatedCallback(void (*callback)(float), bool onlyCh
   this->weightCallback = callback;
 }
 
+// NimBLE's 30 s default keeps the caller blocked and the radio initiating long after a scale has stopped advertising.
+static constexpr uint8_t CONNECT_TIMEOUT_SECONDS = 5;
+
 bool RemoteScales::clientConnect() {
   clientCleanup();
   log("Connecting to BLE client\n");
   client = NimBLEDevice::createClient(device.getAddress());
+  client->setConnectTimeout(CONNECT_TIMEOUT_SECONDS);
   return client->connect();
 }
 
