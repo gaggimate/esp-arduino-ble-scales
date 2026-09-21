@@ -128,7 +128,8 @@ void RemoteScalesScanner::onResult(const NimBLEAdvertisedDevice* advertisedDevic
   // get cached as "seen" regardless, and then be silently ignored forever
   // once the scan response with the real name arrives — even though it's
   // the same NimBLEAdvertisedDevice object, now updated in place.
-  std::string addrStr(reinterpret_cast<const char*>(advertisedDevice->getAddress().getVal()), 6);
+  const uint8_t* addrBytes = advertisedDevice->getAddress().getVal();
+  std::string addrStr(addrBytes, addrBytes + 6);
   if (RemoteScalesPluginRegistry::getInstance()->containsPluginForDevice(advertisedDevice)) {
     if (!alreadySeenAddresses.exists(addrStr)) {
       discoveredScales.emplace_back(advertisedDevice);
