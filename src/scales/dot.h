@@ -30,7 +30,6 @@ private:
 
   bool performConnectionHandshake();
   bool subscribeToNotifications();
-  void sendHandshake();
 
   void notifyCallback(NimBLERemoteCharacteristic* characteristic, uint8_t* data, size_t length, bool isNotify);
   bool decodeAndHandleNotification();

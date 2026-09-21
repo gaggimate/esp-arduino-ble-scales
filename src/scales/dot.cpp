@@ -8,7 +8,7 @@
 //      2       1      1         2              len            2
 // Total frame length = len + 8.
 //
-// Weight notification: class=0x01, type=0x01, payload_len=0x0009.
+// Weight notification: class=0x01 or 0x02, type=0x01, payload_len=0x0009.
 // Frame bytes [6..9] = signed BE int32 grams * 10. Bytes [10..14] are
 // additional payload (likely flow / secondary metric) the driver ignores;
 // bytes [15..16] are the frame CRC trailer.
@@ -17,10 +17,11 @@ const NimBLEUUID serviceUUID("FFF0");
 const NimBLEUUID weightCharacteristicUUID("FFF1");
 const NimBLEUUID commandCharacteristicUUID("FFF2");
 
-// Captured via iOS PacketLogger; CRC trailers are scale-specific and hardcoded
-// from the capture rather than computed.
-static const uint8_t TARE_CMD[]      = { 0xA5, 0x5A, 0x02, 0x04, 0x00, 0x00, 0x9A, 0x00 };
-static const uint8_t HANDSHAKE_CMD[] = { 0xA5, 0x5A, 0x03, 0x0D, 0x00, 0x00, 0x64, 0xD1 };
+// Tare = class 0x03 (control), type 0x0D, empty payload, CRC16/IBM trailer
+// (0x64D1). Captured via iOS PacketLogger; the trailer is hardcoded rather than
+// computed. Note: an earlier revision labelled this frame a "handshake" and
+// sent it on every connect, which zeroed the scale each time.
+static const uint8_t TARE_CMD[] = { 0xA5, 0x5A, 0x03, 0x0D, 0x00, 0x00, 0x64, 0xD1 };
 
 static constexpr size_t FRAME_HEADER_LEN = 8;
 // Generous upper bound — known frames are <=12 bytes of payload. A glitched
@@ -74,7 +75,6 @@ bool TimemoreDotScales::connect() {
     clientCleanup();
     return false;
   }
-  sendHandshake();
   RemoteScales::setWeight(0.f);
   return true;
 }
@@ -101,15 +101,9 @@ void TimemoreDotScales::update() {
 
 bool TimemoreDotScales::tare() {
   if (!isConnected() || commandCharacteristic == nullptr) return false;
-  if (!commandCharacteristic->writeValue(TARE_CMD, sizeof(TARE_CMD), true)) {
+  // Write without response: FFF2 is a write-without-response characteristic.
+  if (!commandCharacteristic->writeValue(TARE_CMD, sizeof(TARE_CMD), false)) {
     RemoteScales::log("Tare write failed\n");
-    return false;
-  }
-  // The scale ACKs the tare command but only actually zeros the reading after
-  // receiving the status poll. Use waitResponse=true so a queue/GATT failure
-  // surfaces here rather than being silently dropped.
-  if (!commandCharacteristic->writeValue(HANDSHAKE_CMD, sizeof(HANDSHAKE_CMD), true)) {
-    RemoteScales::log("Tare follow-up poll failed; scale will not zero\n");
     return false;
   }
   return true;
@@ -157,14 +151,17 @@ bool TimemoreDotScales::decodeAndHandleNotification() {
   uint8_t cls  = dataBuffer[2];
   uint8_t type = dataBuffer[3];
 
-  if (cls == 0x01 && type == 0x01 && payloadLen == 9) {
+  // Beanconqueror accepts weight/battery reports under class 0x01 or 0x02; do the same.
+  const bool isReport = (cls == 0x01 || cls == 0x02);
+
+  if (isReport && type == 0x01 && payloadLen == 9) {
     // Weight frame. Signed big-endian int32 at bytes [6..9], 0.1 g resolution.
     int32_t raw = (static_cast<int32_t>(dataBuffer[6]) << 24) |
                   (static_cast<int32_t>(dataBuffer[7]) << 16) |
                   (static_cast<int32_t>(dataBuffer[8]) << 8)  |
                    static_cast<int32_t>(dataBuffer[9]);
     RemoteScales::setWeight(raw / 10.0f);
-  } else if (cls == 0x01 && type == 0x05 && payloadLen == 2) {
+  } else if (isReport && type == 0x05 && payloadLen == 2) {
     // Battery frame, emitted roughly every 30 s. payload[0] has been observed
     // as a fixed 0x02 prefix (likely a status/category code); payload[1] is
     // battery percentage 0-100.
@@ -204,9 +201,4 @@ bool TimemoreDotScales::subscribeToNotifications() {
   // mis-report capability bits, so do not gate on canNotify().
   if (weightCharacteristic->subscribe(true, callback)) return true;
   return weightCharacteristic->subscribe(false, callback);
-}
-
-void TimemoreDotScales::sendHandshake() {
-  if (commandCharacteristic == nullptr) return;
-  commandCharacteristic->writeValue(HANDSHAKE_CMD, sizeof(HANDSHAKE_CMD), false);
 }
