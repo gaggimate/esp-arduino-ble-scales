@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <cctype>
-#include <cstring>
 #include <vector>
 #include <memory>
 
@@ -61,7 +60,12 @@ private:
     for (char& c : lower) {
       c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
-    return std::strstr(lower.c_str(), "basic3") != nullptr || std::strstr(lower.c_str(), "basic 3") != nullptr ||
-           (std::strstr(lower.c_str(), "timemore") != nullptr && std::strstr(lower.c_str(), "basic") != nullptr);
+    return contains(lower, "basic3") || contains(lower, "basic 3") ||
+           (contains(lower, "timemore") && contains(lower, "basic"));
+  }
+
+  // std::string::contains needs C++23; the toolchains GaggiMate builds with are older.
+  static bool contains(const std::string& text, const char* needle) {
+    return text.find(needle) != std::string::npos;
   }
 };
