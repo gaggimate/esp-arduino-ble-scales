@@ -1,4 +1,5 @@
 #include "dot.h"
+#include <array>
 #include "remote_scales_plugin_registry.h"
 
 // Timemore Dot — single-sensor BLE scale.
@@ -21,7 +22,7 @@ const NimBLEUUID commandCharacteristicUUID("FFF2");
 // (0x64D1). Captured via iOS PacketLogger; the trailer is hardcoded rather than
 // computed. Note: an earlier revision labelled this frame a "handshake" and
 // sent it on every connect, which zeroed the scale each time.
-static const uint8_t TARE_CMD[] = { 0xA5, 0x5A, 0x03, 0x0D, 0x00, 0x00, 0x64, 0xD1 };
+static constexpr std::array<uint8_t, 8> TARE_CMD = { 0xA5, 0x5A, 0x03, 0x0D, 0x00, 0x00, 0x64, 0xD1 };
 
 static constexpr size_t FRAME_HEADER_LEN = 8;
 // Generous upper bound — known frames are <=12 bytes of payload. A glitched
@@ -102,7 +103,7 @@ void TimemoreDotScales::update() {
 bool TimemoreDotScales::tare() {
   if (!isConnected() || commandCharacteristic == nullptr) return false;
   // Write without response: FFF2 is a write-without-response characteristic.
-  if (!commandCharacteristic->writeValue(TARE_CMD, sizeof(TARE_CMD), false)) {
+  if (!commandCharacteristic->writeValue(TARE_CMD.data(), TARE_CMD.size(), false)) {
     RemoteScales::log("Tare write failed\n");
     return false;
   }

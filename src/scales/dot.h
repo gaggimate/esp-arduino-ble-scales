@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <cctype>
+#include <string_view>
 #include <vector>
 #include <memory>
 
@@ -64,7 +65,7 @@ private:
   }
 
   // std::string::contains needs C++23; the toolchains GaggiMate builds with are older.
-  static bool contains(const std::string& text, const char* needle) {
+  static bool contains(std::string_view text, const char* needle) {
     return text.find(needle) != std::string::npos;
   }
 };
