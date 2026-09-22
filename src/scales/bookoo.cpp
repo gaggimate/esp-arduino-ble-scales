@@ -120,7 +120,7 @@ void BookooScales::shutdown() {
 
 void BookooScales::disableScaleSmoothing() {
   if (!isConnected()) return;
-  RemoteScales::log("Flow-smoothing OFF (cmd 0x08 0x00)");
+  RemoteScales::log("Flow-smoothing OFF (cmd 0x08 0x00)\n");
   // Command 0x08 disables the scale's own EMA on its reported flow rate, so
   // getFlowRate() returns raw per-sample flow rather than scale-side filtered
   // output. Firmware consumers (ShotHistoryPlugin, VolumetricRateCalculator)
