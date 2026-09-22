@@ -1,6 +1,7 @@
 #include "bookoo.h"
 #include "remote_scales_plugin_registry.h"
 #include <array>
+#include <string>
 
 /*
 Handle protocol according to the spec found at
@@ -110,7 +111,7 @@ void BookooScales::resetTimer() {
 }
 
 void BookooScales::shutdown() {
-  if (!isConnected() || advancedOptions.enableAutoShutdown == false) return;
+  if (!isConnected() || !advancedOptions.isEnabled(AdvancedOption::AUTO_SHUTDOWN)) return;
 
   // Ultra shutdown command; sendMessage() fills in the XOR checksum (0x1C).
   std::array<uint8_t, 6> payload = { 0x03, 0x0A, 0x15, 0x00, 0x00, 0x00 };
@@ -163,13 +164,21 @@ void BookooScales::checkforAdvancedFeatures() {
   // there is a heartbeatcall (which is already called frequently by the firmware's main loop).
 
   advancedOptions = AdvancedOptions{};
-  // If the model is not an ultra, we don't enable advanced features.
+  // Only the ultra supports these 'advanced, so if it's a mini we don't enable these features.
   if (getModel() == Model::BOOKOO_SC) return;
 
-  advancedOptions.enableAutoShutdown = true;
-  advancedOptions.enableKeepaliveHeartbeat = true;
+  advancedOptions.enable(AdvancedOption::AUTO_SHUTDOWN);
+  advancedOptions.enable(AdvancedOption::KEEPALIVE_HEARTBEAT);
 
-  RemoteScales::log("Configured for Bookoo advanced features; keepalive and auto shutdown enabled.\n");
+  std::string enabledOptions;
+  for (const auto& option : advancedOptions) {
+    if (!option.enabled) continue;
+    if (!enabledOptions.empty()) enabledOptions += ", ";
+    enabledOptions += option.name;
+  }
+
+  RemoteScales::log("Configured for Bookoo advanced features; enabled: %s.\n",
+    enabledOptions.empty() ? "none" : enabledOptions.c_str());
 }
 
 void BookooScales::notifyCallback(
@@ -342,7 +351,7 @@ void BookooScales::sendHeartbeat() {
     return;
   }
 
-  if (advancedOptions.enableKeepaliveHeartbeat) {
+  if (advancedOptions.isEnabled(AdvancedOption::KEEPALIVE_HEARTBEAT)) {
     std::array<uint8_t, 6> payloadKeepAlive = { 0x03, 0x0A, 0x25, 0x00, 0x00, 0x00 };
     sendMessage(payloadKeepAlive.data(), payloadKeepAlive.size());
     lastHeartbeat = now;

@@ -5,6 +5,7 @@
 #include <NimBLEDevice.h>
 #include <NimBLEUtils.h>
 #include <NimBLEScan.h>
+#include <array>
 #include <vector>
 #include <memory>
 
@@ -50,9 +51,33 @@ public:
   void disableScaleSmoothing();
 
 private:
+  enum class AdvancedOption : uint8_t {
+    AUTO_SHUTDOWN,
+    KEEPALIVE_HEARTBEAT,
+    COUNT
+  };
+
   struct AdvancedOptions {
-    bool enableAutoShutdown = false;
-    bool enableKeepaliveHeartbeat = false;
+    struct State {
+      const char* name;
+      bool enabled;
+    };
+
+    std::array<State, static_cast<size_t>(AdvancedOption::COUNT)> states = {{
+      { "auto shutdown", false },
+      { "keepalive heartbeat", false },
+    }};
+
+    bool isEnabled(AdvancedOption option) const {
+      return states[static_cast<size_t>(option)].enabled;
+    }
+
+    void enable(AdvancedOption option) {
+      states[static_cast<size_t>(option)].enabled = true;
+    }
+
+    auto begin() const { return states.begin(); }
+    auto end() const { return states.end(); }
   };
 
   AdvancedOptions advancedOptions;
