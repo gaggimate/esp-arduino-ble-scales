@@ -26,6 +26,10 @@ public:
   void stopTimer() override;
   void resetTimer() override;
 
+  // Request Ultra shutdown (firmware V4.0.0+; ignored while charging).
+  // Does nothing if disconnected or the model is not Ultra.
+  void shutdown() override;
+
   // Capability overrides — Bookoo parses all of these out of the 20-byte
   // weight notification (0x0B). See decodeAndHandleNotification() for layout.
   bool hasFlowRate() const override { return true; }
@@ -46,6 +50,21 @@ public:
   void disableScaleSmoothing();
 
 private:
+  struct AdvancedOptions {
+    bool enableAutoShutdown = false;
+    bool enableKeepaliveHeartbeat = false;
+  };
+
+  AdvancedOptions advancedOptions;
+
+  enum class Model : uint8_t {
+    BOOKOO_SC,
+    BOOKOO_SC_U,
+    UNKNOWN
+  };
+
+  Model getModel() const;
+
   uint32_t lastHeartbeat = 0;
 
   bool markedForReconnection = false;
@@ -59,6 +78,7 @@ private:
   bool performConnectionHandshake();
   void subscribeToNotifications();
 
+  void checkforAdvancedFeatures();
   void sendMessage(const uint8_t* payload, size_t length, bool waitResponse = false);
   void sendEvent(const uint8_t* payload, size_t length);
   void sendHeartbeat();

@@ -4,7 +4,8 @@
 
 /*
 Handle protocol according to the spec found at
-https://github.com/BooKooCode/OpenSource/blob/main/bookoo_mini_scale/protocols.md
+- https://github.com/BooKooCode/OpenSource/blob/main/bookoo_mini_scale/protocols.md
+- https://github.com/BooKooCode/OpenSource/blob/main/bookoo_ultra_scale/protocols.md
 */
 const size_t RECEIVE_PROTOCOL_LENGTH = 20;
 
@@ -41,6 +42,7 @@ bool BookooScales::connect() {
   // VolumetricRateCalculator) is free to filter if needed; running both EMAs
   // compounds lag without adding accuracy.
   disableScaleSmoothing();
+  checkforAdvancedFeatures();
 
   return true;
 }
@@ -62,7 +64,6 @@ void BookooScales::update() {
   }
   else {
     sendHeartbeat();
-    RemoteScales::log("Heartbeat sent.\n");
   }
 }
 
@@ -108,6 +109,15 @@ void BookooScales::resetTimer() {
   sendMessage(payload.data(), payload.size());
 }
 
+void BookooScales::shutdown() {
+  if (!isConnected() || advancedOptions.enableAutoShutdown == false) return;
+
+  // Ultra shutdown command; sendMessage() fills in the XOR checksum (0x1C).
+  std::array<uint8_t, 6> payload = { 0x03, 0x0A, 0x15, 0x00, 0x00, 0x00 };
+  sendMessage(payload.data(), payload.size());
+  RemoteScales::log("Shutdown requested (cmd 0x15)\n");
+}
+
 void BookooScales::disableScaleSmoothing() {
   if (!isConnected()) return;
   RemoteScales::log("Flow-smoothing OFF (cmd 0x08 0x00)");
@@ -123,6 +133,45 @@ void BookooScales::disableScaleSmoothing() {
 //-----------------------------------------------------------------------------------/
 //---------------------------       PRIVATE       -----------------------------------/
 //-----------------------------------------------------------------------------------/
+BookooScales::Model BookooScales::getModel() const {
+  const std::string deviceName(RemoteScales::getDeviceName().c_str());
+  // Matching is based the complete model name
+  // but the ignoring the space and device-specific suffix are stripped.
+  // EX: "BOOKOO_SC_U 123456" -> "BOOKOO_SC_U"
+  const std::string modelName = deviceName.substr(0, deviceName.find(' '));
+
+  static constexpr struct {
+    const char* name;
+    Model model;
+  } models[] = {
+    // to add new models, add them here and update the enum class Model in ./bookoo.h
+    { "BOOKOO_SC", Model::BOOKOO_SC },
+    { "BOOKOO_SC_U", Model::BOOKOO_SC_U },
+  };
+
+  for (const auto& entry : models) {
+    if (modelName == entry.name) {
+      return entry.model;
+    }
+  }
+  return Model::UNKNOWN;
+}
+
+void BookooScales::checkforAdvancedFeatures() {
+  // Bookoo Ultra requires a keepalive heartbeat to prevent the scale from sleeping.
+  // The protocol has no command to disable this, so we append a keepalive event everytime
+  // there is a heartbeatcall (which is already called frequently by the firmware's main loop).
+
+  advancedOptions = AdvancedOptions{};
+  // If the model is not an ultra, we don't enable advanced features.
+  if (getModel() == Model::BOOKOO_SC) return;
+
+  advancedOptions.enableAutoShutdown = true;
+  advancedOptions.enableKeepaliveHeartbeat = true;
+
+  RemoteScales::log("Configured for Bookoo advanced features; keepalive and auto shutdown enabled.\n");
+}
+
 void BookooScales::notifyCallback(
   NimBLERemoteCharacteristic* pBLERemoteCharacteristic,
   uint8_t* pData,
@@ -293,12 +342,22 @@ void BookooScales::sendHeartbeat() {
     return;
   }
 
+  if (advancedOptions.enableKeepaliveHeartbeat) {
+    std::array<uint8_t, 6> payloadKeepAlive = { 0x03, 0x0A, 0x25, 0x00, 0x00, 0x00 };
+    sendMessage(payloadKeepAlive.data(), payloadKeepAlive.size());
+    lastHeartbeat = now;
+    RemoteScales::log("Sent keepalive heartbeat\n");
+    return;
+  }
+
   uint8_t payload1[] = { 0x02,0x00 };
   sendMessage(payload1, 2);
   sendNotificationRequest();
   uint8_t payload2[] = { 0x00 };
   sendMessage(payload2, 1);
   lastHeartbeat = now;
+
+  RemoteScales::log("Sent heartbeat\n");
 }
 
 void BookooScales::subscribeToNotifications() {
