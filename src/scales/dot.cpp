@@ -1,34 +1,72 @@
 #include "dot.h"
 #include "remote_scales_plugin_registry.h"
 
-// Timemore Dot — single-sensor BLE scale.
+// Timemore Dot protocol.
 //
-// Frame layout (big-endian):
-//   [A5 5A] [class] [type] [len_hi len_lo] [payload...] [crc_hi crc_lo]
-//      2       1      1         2              len            2
-// Total frame length = len + 8.
+// Every frame, in both directions, big-endian:
+//   A5 5A | class | type | payload length (2) | payload | CRC (2)
+// The CRC is CRC-16/MODBUS (init 0xFFFF, reflected poly 0xA001) over all bytes before it.
 //
-// Weight notification: class=0x01, type=0x01, payload_len=0x0009.
-// Frame bytes [6..9] = signed BE int32 grams * 10. Bytes [10..14] are
-// additional payload (likely flow / secondary metric) the driver ignores;
-// bytes [15..16] are the frame CRC trailer.
+// Written to FFF2:
+//   class 0x03 = control
+//     0x0D            tare
+//     0x02 [1|2|3]    timer start | stop | reset
+//     0x06 [unit]     weight unit, 0 = gram
+//     0x08 [01 00]    standard weighing mode
+//   class 0x02 = query, the type names the setting to read back (0x02 timer, 0x05 battery, 0x06 unit, 0x08 mode, ...)
+//     and the scale answers each one with an extra report. This driver sends none: weight and battery are
+//     streamed unsolicited, and every query only adds traffic. Earlier versions sent query 0x04 with each tare,
+//     mistaking it for the tare command, and the real tare (0x03 0x0D) as a "status poll".
+// Notified on FFF1, class 0x01 (unsolicited) or 0x02 (answer to a query):
+//   0x01  weight, signed 32 bit, 0.1 g (further payload bytes unused here)
+//   0x05  battery, percentage in the second payload byte
+//
+// The Dot only streams once the link is encrypted, so the central has to start LE security itself.
 
-const NimBLEUUID serviceUUID("FFF0");
-const NimBLEUUID weightCharacteristicUUID("FFF1");
-const NimBLEUUID commandCharacteristicUUID("FFF2");
+namespace {
 
-// Captured via iOS PacketLogger; CRC trailers are scale-specific and hardcoded
-// from the capture rather than computed.
-static const uint8_t TARE_CMD[]      = { 0xA5, 0x5A, 0x02, 0x04, 0x00, 0x00, 0x9A, 0x00 };
-static const uint8_t HANDSHAKE_CMD[] = { 0xA5, 0x5A, 0x03, 0x0D, 0x00, 0x00, 0x64, 0xD1 };
+const NimBLEUUID SERVICE_UUID("FFF0");
+const NimBLEUUID WEIGHT_UUID("FFF1");
+const NimBLEUUID COMMAND_UUID("FFF2");
 
-static constexpr size_t FRAME_HEADER_LEN = 8;
-// Generous upper bound — known frames are <=12 bytes of payload. A glitched
-// notification with a bogus length would otherwise stall the parser while the
-// internal buffer grew waiting for bytes that never arrive.
-static constexpr uint16_t MAX_PAYLOAD_LEN = 64;
-static constexpr uint8_t MAGIC_0 = 0xA5;
-static constexpr uint8_t MAGIC_1 = 0x5A;
+constexpr uint8_t MAGIC[2] = { 0xA5, 0x5A };
+constexpr size_t HEADER_LENGTH = 6;   // magic, class, type, length
+constexpr size_t TRAILER_LENGTH = 2;  // CRC
+constexpr size_t MAX_PAYLOAD_LENGTH = 64;  // real frames carry <= 9 bytes; anything larger is a desync
+
+constexpr uint8_t CLASS_COMMAND = 0x03;
+constexpr uint8_t CLASS_REPORT_A = 0x01;
+constexpr uint8_t CLASS_REPORT_B = 0x02;
+
+constexpr uint8_t CMD_TIMER = 0x02;
+constexpr uint8_t CMD_UNIT = 0x06;
+constexpr uint8_t CMD_MODE = 0x08;
+constexpr uint8_t CMD_TARE = 0x0D;
+
+constexpr uint8_t REPORT_WEIGHT = 0x01;
+constexpr uint8_t REPORT_BATTERY = 0x05;
+
+constexpr uint8_t TIMER_START = 0x01;
+constexpr uint8_t TIMER_STOP = 0x02;
+constexpr uint8_t TIMER_RESET = 0x03;
+
+constexpr int CONNECT_ATTEMPTS = 3;
+constexpr uint32_t CONNECT_RETRY_DELAY_MS = 500;
+constexpr uint32_t SETTLE_AFTER_SUBSCRIBE_MS = 500;
+constexpr uint32_t SETTLE_BETWEEN_COMMANDS_MS = 200;
+
+uint16_t crc16Modbus(const uint8_t* data, size_t length) {
+  uint16_t crc = 0xFFFF;
+  for (size_t i = 0; i < length; i++) {
+    crc ^= data[i];
+    for (int bit = 0; bit < 8; bit++) {
+      crc = (crc & 1) ? static_cast<uint16_t>((crc >> 1) ^ 0xA001) : static_cast<uint16_t>(crc >> 1);
+    }
+  }
+  return crc;
+}
+
+}  // namespace
 
 //-----------------------------------------------------------------------------------/
 //---------------------------        PUBLIC       -----------------------------------/
@@ -40,42 +78,13 @@ bool TimemoreDotScales::connect() {
     RemoteScales::log("Already connected\n");
     return true;
   }
-
   RemoteScales::log("Connecting to %s[%s]\n", RemoteScales::getDeviceName().c_str(), RemoteScales::getDeviceAddress().c_str());
-  // After a previous session the Dot can hold its end of the link open briefly
-  // on the peripheral side; the first BLE central connect can then fail. Retry
-  // a few times with a short delay before giving up.
-  bool linkUp = false;
-  for (int attempt = 0; attempt < 3; ++attempt) {
-    if (RemoteScales::clientConnect()) { linkUp = true; break; }
+
+  if (!openLink() || !secureLink() || !discoverCharacteristics() || !subscribe()) {
     RemoteScales::clientCleanup();
-    RemoteScales::log("clientConnect attempt %d failed, retrying\n", attempt + 1);
-    delay(500);
-  }
-  if (!linkUp) {
-    RemoteScales::log("clientConnect gave up after retries\n");
     return false;
   }
-
-  // The Dot will not emit weight notifications until the link is encrypted.
-  // Look the client back up by peer address since RemoteScales keeps it private.
-  NimBLEClient* nimbleClient = NimBLEDevice::getClientByPeerAddress(NimBLEAddress(RemoteScales::getDeviceAddress()));
-  NimBLEDevice::setSecurityAuth(true, false, true);
-  if (nimbleClient == nullptr || !nimbleClient->secureConnection()) {
-    RemoteScales::log("secureConnection failed\n");
-    clientCleanup();
-    return false;
-  }
-
-  if (!performConnectionHandshake()) {
-    return false;
-  }
-  if (!subscribeToNotifications()) {
-    RemoteScales::log("FFF1 subscribe failed (notify and indicate)\n");
-    clientCleanup();
-    return false;
-  }
-  sendHandshake();
+  configure();
   RemoteScales::setWeight(0.f);
   return true;
 }
@@ -88,126 +97,151 @@ bool TimemoreDotScales::isConnected() {
   return RemoteScales::clientIsConnected();
 }
 
-void TimemoreDotScales::update() {
-  if (markedForReconnection) {
-    RemoteScales::log("Marked for reconnection. Will attempt to reconnect.\n");
-    RemoteScales::clientCleanup();
-    if (!connect()) {
-      RemoteScales::log("Reconnect failed; will retry on next update\n");
-      return; // leave markedForReconnection=true so the next update retries
-    }
-    markedForReconnection = false;
-  }
-}
+// The Dot needs no keep-alive and a lost link is left to the application to re-establish.
+void TimemoreDotScales::update() {}
 
 bool TimemoreDotScales::tare() {
-  if (!isConnected() || commandCharacteristic == nullptr) return false;
-  if (!commandCharacteristic->writeValue(TARE_CMD, sizeof(TARE_CMD), false)) {
-    RemoteScales::log("Tare write failed\n");
-    return false;
-  }
-  // The scale ACKs the tare command but only actually zeros the reading after
-  // receiving the status poll. Use waitResponse=true so a queue/GATT failure
-  // surfaces here rather than being silently dropped.
-  if (!commandCharacteristic->writeValue(HANDSHAKE_CMD, sizeof(HANDSHAKE_CMD), false)) {
-    RemoteScales::log("Tare follow-up poll failed; scale will not zero\n");
-    return false;
-  }
-  return true;
+  return sendCommand(CMD_TARE);
+}
+
+void TimemoreDotScales::startTimer() {
+  sendCommand(CMD_TIMER, &TIMER_START, 1);
+}
+
+void TimemoreDotScales::stopTimer() {
+  sendCommand(CMD_TIMER, &TIMER_STOP, 1);
+}
+
+void TimemoreDotScales::resetTimer() {
+  sendCommand(CMD_TIMER, &TIMER_RESET, 1);
 }
 
 //-----------------------------------------------------------------------------------/
 //---------------------------       PRIVATE       -----------------------------------/
 //-----------------------------------------------------------------------------------/
-void TimemoreDotScales::notifyCallback(
-  NimBLERemoteCharacteristic* characteristic,
-  uint8_t* data,
-  size_t length,
-  bool isNotify
-) {
-  dataBuffer.insert(dataBuffer.end(), data, data + length);
-  // Drain frames; each iteration consumes one frame and returns whether more
-  // remain in the buffer.
-  while (decodeAndHandleNotification()) {
-    // intentionally empty
+
+// After a previous session the Dot can keep its end of the old link open for a moment, so the first attempt may fail.
+bool TimemoreDotScales::openLink() {
+  for (int attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt++) {
+    if (RemoteScales::clientConnect()) return true;
+    RemoteScales::clientCleanup();
+    RemoteScales::log("Connect attempt %d of %d failed\n", attempt, CONNECT_ATTEMPTS);
+    if (attempt < CONNECT_ATTEMPTS) delay(CONNECT_RETRY_DELAY_MS);
   }
+  return false;
 }
 
-bool TimemoreDotScales::decodeAndHandleNotification() {
-  // Resync to magic bytes — drop leading garbage.
-  while (!dataBuffer.empty() && dataBuffer[0] != MAGIC_0) {
-    dataBuffer.erase(dataBuffer.begin());
-  }
-  if (dataBuffer.size() < FRAME_HEADER_LEN) return false;
-  if (dataBuffer[1] != MAGIC_1) {
-    dataBuffer.erase(dataBuffer.begin());
-    return !dataBuffer.empty();
-  }
-
-  uint16_t payloadLen = (static_cast<uint16_t>(dataBuffer[4]) << 8) | dataBuffer[5];
-  if (payloadLen > MAX_PAYLOAD_LEN) {
-    // Likely a glitched / desynced frame. Drop the magic byte and re-resync
-    // rather than blocking the parser waiting for bytes that may never come.
-    RemoteScales::log("Implausible payloadLen=%u, resyncing\n", payloadLen);
-    dataBuffer.erase(dataBuffer.begin());
-    return !dataBuffer.empty();
-  }
-  size_t frameLen = static_cast<size_t>(payloadLen) + FRAME_HEADER_LEN;
-  if (dataBuffer.size() < frameLen) return false;
-
-  uint8_t cls  = dataBuffer[2];
-  uint8_t type = dataBuffer[3];
-
-  if (cls == 0x01 && type == 0x01 && payloadLen == 9) {
-    // Weight frame. Signed big-endian int32 at bytes [6..9], 0.1 g resolution.
-    int32_t raw = (static_cast<int32_t>(dataBuffer[6]) << 24) |
-                  (static_cast<int32_t>(dataBuffer[7]) << 16) |
-                  (static_cast<int32_t>(dataBuffer[8]) << 8)  |
-                   static_cast<int32_t>(dataBuffer[9]);
-    RemoteScales::setWeight(raw / 10.0f);
-  } else if (cls == 0x01 && type == 0x05 && payloadLen == 2) {
-    // Battery frame, emitted roughly every 30 s. payload[0] has been observed
-    // as a fixed 0x02 prefix (likely a status/category code); payload[1] is
-    // battery percentage 0-100.
-    RemoteScales::setBatteryLevel(dataBuffer[7]);
-  } else {
-    RemoteScales::log("Unhandled frame cls=%02X type=%02X len=%u\n",
-                      cls, type, (unsigned)payloadLen);
-  }
-
-  dataBuffer.erase(dataBuffer.begin(), dataBuffer.begin() + frameLen);
-  return !dataBuffer.empty();
-}
-
-bool TimemoreDotScales::performConnectionHandshake() {
-  RemoteScales::log("Performing handshake\n");
-
-  service = RemoteScales::clientGetService(serviceUUID);
-  if (service == nullptr) {
-    clientCleanup();
-    return false;
-  }
-
-  weightCharacteristic = service->getCharacteristic(weightCharacteristicUUID);
-  commandCharacteristic = service->getCharacteristic(commandCharacteristicUUID);
-  if (weightCharacteristic == nullptr || commandCharacteristic == nullptr) {
-    clientCleanup();
+bool TimemoreDotScales::secureLink() {
+  // RemoteScales keeps its client private, so look it up by the peer address.
+  NimBLEClient* nimbleClient = NimBLEDevice::getClientByPeerAddress(NimBLEAddress(RemoteScales::getDeviceAddress()));
+  NimBLEDevice::setSecurityAuth(true, false, true);
+  if (nimbleClient == nullptr || !nimbleClient->secureConnection()) {
+    RemoteScales::log("Encrypting the link failed\n");
     return false;
   }
   return true;
 }
 
-bool TimemoreDotScales::subscribeToNotifications() {
-  auto callback = [this](NimBLERemoteCharacteristic* characteristic, uint8_t* data, size_t length, bool isNotify) {
-    notifyCallback(characteristic, data, length, isNotify);
-  };
-  // Try notify first; fall back to indicate. Some NimBLE/peripheral combos
-  // mis-report capability bits, so do not gate on canNotify().
-  if (weightCharacteristic->subscribe(true, callback)) return true;
-  return weightCharacteristic->subscribe(false, callback);
+bool TimemoreDotScales::discoverCharacteristics() {
+  service = RemoteScales::clientGetService(SERVICE_UUID);
+  if (service == nullptr) {
+    RemoteScales::log("Service FFF0 not found\n");
+    return false;
+  }
+  weightCharacteristic = service->getCharacteristic(WEIGHT_UUID);
+  commandCharacteristic = service->getCharacteristic(COMMAND_UUID);
+  if (weightCharacteristic == nullptr || commandCharacteristic == nullptr) {
+    RemoteScales::log("Characteristics FFF1/FFF2 not found\n");
+    return false;
+  }
+  return true;
 }
 
-void TimemoreDotScales::sendHandshake() {
-  if (commandCharacteristic == nullptr) return;
-  commandCharacteristic->writeValue(HANDSHAKE_CMD, sizeof(HANDSHAKE_CMD), false);
+bool TimemoreDotScales::subscribe() {
+  rxBuffer.clear();
+  auto callback = [this](NimBLERemoteCharacteristic*, uint8_t* data, size_t length, bool) { onNotify(data, length); };
+  // Some stacks mis-report the property bits, so try notifications first and indications second instead of checking them.
+  if (weightCharacteristic->subscribe(true, callback) || weightCharacteristic->subscribe(false, callback)) return true;
+  RemoteScales::log("Subscribing to FFF1 failed\n");
+  return false;
+}
+
+// Put the scale into a known state: grams, plain weighing mode. Deliberately no tare here.
+void TimemoreDotScales::configure() {
+  delay(SETTLE_AFTER_SUBSCRIBE_MS);
+  const uint8_t gram = 0x00;
+  sendCommand(CMD_UNIT, &gram, 1);
+  delay(SETTLE_BETWEEN_COMMANDS_MS);
+  const uint8_t standardMode[] = { 0x01, 0x00 };
+  sendCommand(CMD_MODE, standardMode, sizeof(standardMode));
+}
+
+bool TimemoreDotScales::sendCommand(uint8_t type, const uint8_t* payload, size_t length) {
+  if (!isConnected() || commandCharacteristic == nullptr || length > MAX_PAYLOAD_LENGTH) return false;
+
+  uint8_t frame[HEADER_LENGTH + MAX_PAYLOAD_LENGTH + TRAILER_LENGTH];
+  frame[0] = MAGIC[0];
+  frame[1] = MAGIC[1];
+  frame[2] = CLASS_COMMAND;
+  frame[3] = type;
+  frame[4] = static_cast<uint8_t>(length >> 8);
+  frame[5] = static_cast<uint8_t>(length);
+  for (size_t i = 0; i < length; i++) frame[HEADER_LENGTH + i] = payload[i];
+  const size_t crcOffset = HEADER_LENGTH + length;
+  const uint16_t crc = crc16Modbus(frame, crcOffset);
+  frame[crcOffset] = static_cast<uint8_t>(crc >> 8);
+  frame[crcOffset + 1] = static_cast<uint8_t>(crc);
+
+  if (!commandCharacteristic->writeValue(frame, crcOffset + TRAILER_LENGTH, false)) {
+    RemoteScales::log("Writing command 0x%02X failed\n", type);
+    return false;
+  }
+  return true;
+}
+
+// Notifications are a byte stream: a frame may be split across packets or share one with the next frame.
+void TimemoreDotScales::onNotify(const uint8_t* data, size_t length) {
+  rxBuffer.insert(rxBuffer.end(), data, data + length);
+  while (consumeFrame()) {
+  }
+}
+
+// Takes at most one frame (or a run of garbage) off the front of the buffer; false once more bytes are needed.
+bool TimemoreDotScales::consumeFrame() {
+  auto start = rxBuffer.begin();
+  while (start != rxBuffer.end() && *start != MAGIC[0]) ++start;
+  rxBuffer.erase(rxBuffer.begin(), start);
+  if (rxBuffer.size() < HEADER_LENGTH + TRAILER_LENGTH) return false;
+
+  const size_t payloadLength = (static_cast<size_t>(rxBuffer[4]) << 8) | rxBuffer[5];
+  if (rxBuffer[1] != MAGIC[1] || payloadLength > MAX_PAYLOAD_LENGTH) {
+    rxBuffer.erase(rxBuffer.begin());  // not a frame start after all, resync on the next magic byte
+    return true;
+  }
+  const size_t frameLength = HEADER_LENGTH + payloadLength + TRAILER_LENGTH;
+  if (rxBuffer.size() < frameLength) return false;
+
+  // The checksum of inbound frames has not been confirmed on hardware yet, so a mismatch is reported once, not enforced.
+  const uint16_t expected = crc16Modbus(rxBuffer.data(), HEADER_LENGTH + payloadLength);
+  const uint16_t received = static_cast<uint16_t>((rxBuffer[frameLength - 2] << 8) | rxBuffer[frameLength - 1]);
+  if (expected != received && !crcMismatchLogged) {
+    crcMismatchLogged = true;
+    RemoteScales::log("Inbound CRC differs (got %04X, computed %04X)\n", received, expected);
+  }
+
+  handleFrame(rxBuffer[2], rxBuffer[3], rxBuffer.data() + HEADER_LENGTH, payloadLength);
+  rxBuffer.erase(rxBuffer.begin(), rxBuffer.begin() + frameLength);
+  return !rxBuffer.empty();
+}
+
+void TimemoreDotScales::handleFrame(uint8_t frameClass, uint8_t type, const uint8_t* payload, size_t length) {
+  if (frameClass != CLASS_REPORT_A && frameClass != CLASS_REPORT_B) return;
+
+  if (type == REPORT_WEIGHT && length >= 8) {
+    const uint32_t raw = (static_cast<uint32_t>(payload[0]) << 24) | (static_cast<uint32_t>(payload[1]) << 16) |
+                         (static_cast<uint32_t>(payload[2]) << 8) | static_cast<uint32_t>(payload[3]);
+    RemoteScales::setWeight(static_cast<int32_t>(raw) / 10.0f);
+  } else if (type == REPORT_BATTERY && length >= 2) {
+    RemoteScales::setBatteryLevel(payload[1]);
+  }
 }
