@@ -71,6 +71,9 @@ public:
   virtual void disconnect() = 0;
   virtual void update() = 0;
 
+  // Optional device shutdown. Drivers with shutdown support override this.
+  virtual void shutdown() {}
+
   // Optional timer controls. Drivers that can drive the scale's internal
   // stopwatch over BLE should override these AND return true from
   // hasTimerControl(). Defaults are no-ops so non-Bookoo drivers don't need
