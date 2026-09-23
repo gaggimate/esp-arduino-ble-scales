@@ -103,7 +103,7 @@ private:
   bool performConnectionHandshake();
   void subscribeToNotifications();
 
-  void checkforAdvancedFeatures();
+  void checkForAdvancedFeatures();
   void sendMessage(const uint8_t* payload, size_t length, bool waitResponse = false);
   void sendEvent(const uint8_t* payload, size_t length);
   void sendHeartbeat();

@@ -43,7 +43,7 @@ bool BookooScales::connect() {
   // VolumetricRateCalculator) is free to filter if needed; running both EMAs
   // compounds lag without adding accuracy.
   disableScaleSmoothing();
-  checkforAdvancedFeatures();
+  checkForAdvancedFeatures();
 
   return true;
 }
@@ -113,7 +113,7 @@ void BookooScales::resetTimer() {
 void BookooScales::shutdown() {
   if (!isConnected() || !advancedOptions.isEnabled(AdvancedOption::AUTO_SHUTDOWN)) return;
 
-  // Ultra shutdown command; sendMessage() fills in the XOR checksum (0x1C).
+  // Themis Ultra shutdown command
   std::array<uint8_t, 6> payload = { 0x03, 0x0A, 0x15, 0x00, 0x00, 0x00 };
   sendMessage(payload.data(), payload.size());
   RemoteScales::log("Shutdown requested (cmd 0x15)\n");
@@ -136,16 +136,15 @@ void BookooScales::disableScaleSmoothing() {
 //-----------------------------------------------------------------------------------/
 BookooScales::Model BookooScales::getModel() const {
   const std::string deviceName(RemoteScales::getDeviceName().c_str());
-  // Matching is based the complete model name
-  // but the ignoring the space and device-specific suffix are stripped.
-  // EX: "BOOKOO_SC_U 123456" -> "BOOKOO_SC_U"
+  // Matching is based the complete model name but we strip the space and 
+  // device-specific suffix. EX: "BOOKOO_SC_U 123456" -> "BOOKOO_SC_U"
   const std::string modelName = deviceName.substr(0, deviceName.find(' '));
 
   static constexpr struct {
     const char* name;
     Model model;
   } models[] = {
-    // to add new models, add them here and update the enum class Model in ./bookoo.h
+    // To add new models, add them here and update the enum "Model" in bookoo.h
     { "BOOKOO_SC", Model::BOOKOO_SC },
     { "BOOKOO_SC_U", Model::BOOKOO_SC_U },
   };
@@ -158,13 +157,13 @@ BookooScales::Model BookooScales::getModel() const {
   return Model::UNKNOWN;
 }
 
-void BookooScales::checkforAdvancedFeatures() {
+void BookooScales::checkForAdvancedFeatures() {
   // Bookoo Ultra requires a keepalive heartbeat to prevent the scale from sleeping.
-  // The protocol has no command to disable this, so we append a keepalive event everytime
-  // there is a heartbeatcall (which is already called frequently by the firmware's main loop).
+  // The protocol has no command to disable this, so we append a keepalive event to the
+  // heartbeat() method (which is already called frequently by the firmware's main loop).
 
   advancedOptions = AdvancedOptions{};
-  // Only the ultra supports these 'advanced, so if it's a mini we don't enable these features.
+  // Only the ultra supports these 'advanced' features, so if it's a Themis Mini we return
   if (getModel() == Model::BOOKOO_SC) return;
 
   advancedOptions.enable(AdvancedOption::AUTO_SHUTDOWN);
