@@ -20,7 +20,8 @@ public:
   bool tare() override;
 
   bool hasBatteryLevel() const override { return true; }
-  bool hasTimerControl() const override { return true; }
+  // Theoretically the dot has timer control but there's not really anything to gain from running a timer
+  bool hasTimerControl() const override { return false; }
   void startTimer() override;
   void stopTimer() override;
   void resetTimer() override;
