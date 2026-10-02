@@ -5,6 +5,7 @@
 #include <NimBLEDevice.h>
 #include <NimBLEUtils.h>
 #include <NimBLEScan.h>
+#include <array>
 #include <vector>
 #include <memory>
 
@@ -26,6 +27,10 @@ public:
   void stopTimer() override;
   void resetTimer() override;
 
+  // Request Ultra shutdown (firmware V4.0.0+; ignored while charging).
+  // Does nothing if disconnected or the model is not Ultra.
+  void shutdown() override;
+
   // Capability overrides — Bookoo parses all of these out of the 20-byte
   // weight notification (0x0B). See decodeAndHandleNotification() for layout.
   bool hasFlowRate() const override { return true; }
@@ -46,6 +51,45 @@ public:
   void disableScaleSmoothing();
 
 private:
+  enum class AdvancedOption : uint8_t {
+    AUTO_SHUTDOWN,
+    KEEPALIVE_HEARTBEAT,
+    COUNT
+  };
+
+  struct AdvancedOptions {
+    struct State {
+      const char* name;
+      bool enabled;
+    };
+
+    std::array<State, static_cast<size_t>(AdvancedOption::COUNT)> states = {{
+      { "auto shutdown", false },
+      { "keepalive heartbeat", false },
+    }};
+
+    bool isEnabled(AdvancedOption option) const {
+      return states[static_cast<size_t>(option)].enabled;
+    }
+
+    void enable(AdvancedOption option) {
+      states[static_cast<size_t>(option)].enabled = true;
+    }
+
+    auto begin() const { return states.begin(); }
+    auto end() const { return states.end(); }
+  };
+
+  AdvancedOptions advancedOptions;
+
+  enum class Model : uint8_t {
+    BOOKOO_SC,
+    BOOKOO_SC_U,
+    UNKNOWN
+  };
+
+  Model getModel() const;
+
   uint32_t lastHeartbeat = 0;
 
   bool markedForReconnection = false;
@@ -59,6 +103,7 @@ private:
   bool performConnectionHandshake();
   void subscribeToNotifications();
 
+  void checkForAdvancedFeatures();
   void sendMessage(const uint8_t* payload, size_t length, bool waitResponse = false);
   void sendEvent(const uint8_t* payload, size_t length);
   void sendHeartbeat();
