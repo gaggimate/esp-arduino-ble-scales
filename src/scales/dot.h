@@ -18,6 +18,7 @@ public:
   void disconnect() override;
   bool isConnected() override;
   bool tare() override;
+  void shutdown() override;
 
   bool hasBatteryLevel() const override { return true; }
   bool hasFlowRate() const override { return true; }
