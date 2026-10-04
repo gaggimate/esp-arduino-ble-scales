@@ -139,7 +139,10 @@ void EclairScales::handleDataNotification(uint8_t* data, size_t length) {
         float weight = rawWeight / 1000.0f; // Convert to grams
         RemoteScales::setWeight(weight);
     } else if (header == static_cast<uint8_t>(EclairMessageType::FLOW_RATE)) {
-        RemoteScales::log("Received flow rate data\n");
+        int32_t rawFlow;
+        memcpy(&rawFlow, &data[1], 4); // Little-endian, mg/s
+        RemoteScales::setFlowRate(rawFlow / 1000.0f);
+        flowSeen = true;
     } else {
         RemoteScales::log("Unknown data notification header: %02X\n", header);
     }

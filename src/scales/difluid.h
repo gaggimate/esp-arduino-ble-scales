@@ -9,6 +9,7 @@ public:
     DifluidScales(const DiscoveredDevice &device);
 
     bool tare() override;
+    bool hasFlowRate() const override { return true; }
     bool isConnected() override;
     bool connect() override;
     void disconnect() override;

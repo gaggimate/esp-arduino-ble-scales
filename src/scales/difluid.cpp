@@ -113,8 +113,11 @@ void DifluidScales::notifyCallback(
             int32_t weightRaw = readInt32BE(&pData[5]);
             float weight = weightRaw / 10.0f; // Assuming weight unit is grams x10
 
-            // Handle other data fields if necessary
-            // ...
+            // Flow rate: Data4-5, x10. Only trusted in gram mode (Data12 == 0).
+            if (pData[17] == 0) {
+                int16_t flowRaw = (int16_t)(((uint16_t)pData[9] << 8) | pData[10]);
+                setFlowRate(flowRaw / 10.0f);
+            }
 
             log("Weight: %.1f g\n", weight);
 

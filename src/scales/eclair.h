@@ -25,12 +25,15 @@ public:
     bool isConnected() override;
     void update() override;
     bool tare() override;
+    // Only reported once the scale has actually sent a flow ('F') frame.
+    bool hasFlowRate() const override { return flowSeen; }
 
 private:
     NimBLERemoteService* service = nullptr;
     NimBLERemoteCharacteristic* dataCharacteristic = nullptr;
     NimBLERemoteCharacteristic* configCharacteristic = nullptr;
     uint8_t battery = 0;
+    bool flowSeen = false;
     uint32_t lastHeartbeat = 0;
 
     bool performConnectionHandshake();
