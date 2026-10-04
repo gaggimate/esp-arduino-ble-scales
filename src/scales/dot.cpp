@@ -13,6 +13,7 @@
 //     0x02 [1|2|3]    timer start | stop | reset
 //     0x06 [unit]     weight unit, 0 = gram
 //     0x08 [01 00]    standard weighing mode
+//     0x0B            power off
 //   class 0x02 = query, the type names the setting to read back (0x02 timer, 0x05 battery, 0x06 unit, 0x08 mode, ...)
 //     and the scale answers each one with an extra report. This driver sends none: weight and battery are
 //     streamed unsolicited, and every query only adds traffic. Earlier versions sent query 0x04 with each tare,
@@ -41,6 +42,7 @@ constexpr uint8_t CLASS_REPORT_B = 0x02;
 constexpr uint8_t CMD_TIMER = 0x02;
 constexpr uint8_t CMD_UNIT = 0x06;
 constexpr uint8_t CMD_MODE = 0x08;
+constexpr uint8_t CMD_POWER_OFF = 0x0B;
 constexpr uint8_t CMD_TARE = 0x0D;
 
 constexpr uint8_t REPORT_WEIGHT = 0x01;
@@ -102,6 +104,10 @@ void TimemoreDotScales::update() {}
 
 bool TimemoreDotScales::tare() {
   return sendCommand(CMD_TARE);
+}
+
+void TimemoreDotScales::shutdown() {
+  sendCommand(CMD_POWER_OFF);
 }
 
 void TimemoreDotScales::startTimer() {
