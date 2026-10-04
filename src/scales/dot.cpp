@@ -18,7 +18,7 @@
 //     streamed unsolicited, and every query only adds traffic. Earlier versions sent query 0x04 with each tare,
 //     mistaking it for the tare command, and the real tare (0x03 0x0D) as a "status poll".
 // Notified on FFF1, class 0x01 (unsolicited) or 0x02 (answer to a query):
-//   0x01  weight, signed 32 bit, 0.1 g (further payload bytes unused here)
+//   0x01  weight (signed 32 bit, 0.1 g), flow rate (signed 16 bit, 0.1 g/s), timer, overload flag
 //   0x05  battery, percentage in the second payload byte
 //
 // The Dot only streams once the link is encrypted, so the central has to start LE security itself.
@@ -241,6 +241,9 @@ void TimemoreDotScales::handleFrame(uint8_t frameClass, uint8_t type, const uint
     const uint32_t raw = (static_cast<uint32_t>(payload[0]) << 24) | (static_cast<uint32_t>(payload[1]) << 16) |
                          (static_cast<uint32_t>(payload[2]) << 8) | static_cast<uint32_t>(payload[3]);
     RemoteScales::setWeight(static_cast<int32_t>(raw) / 10.0f);
+    // Unit is forced to gram on connect, so flow is in 0.1 g/s.
+    const auto flow = static_cast<int16_t>((payload[4] << 8) | payload[5]);
+    RemoteScales::setFlowRate(flow / 10.0f);
   } else if (type == REPORT_BATTERY && length >= 2) {
     RemoteScales::setBatteryLevel(payload[1]);
   }
