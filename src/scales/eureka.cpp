@@ -158,7 +158,7 @@ void EurekaScales::subscribeToNotifications() {
 
   if (weightCharacteristic->canNotify()) {
     RemoteScales::log("Registering callback for weight characteristic\n");
-    weightCharacteristic->subscribe(true, callback);
+    weightCharacteristic->subscribe(true, callback, true);
   }
 
   if (commandCharacteristic->canNotify()) {
