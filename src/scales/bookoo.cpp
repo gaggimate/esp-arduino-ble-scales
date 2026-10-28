@@ -388,6 +388,9 @@ void BookooScales::subscribeToNotifications() {
 
 // NOTE: the last byte of `payload` is overwritten with the XOR checksum — callers must reserve it.
 void BookooScales::sendMessage(const uint8_t* payload, size_t length, bool waitResponse) {
+  // The handshake (performConnectionHandshake) sets commandCharacteristic after
+  // isConnected() is already true; until then a command is a no-op, not a crash.
+  if (commandCharacteristic == nullptr) return;
 
   auto bytes = std::make_unique<uint8_t[]>(length);
 

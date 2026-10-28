@@ -95,8 +95,8 @@ private:
   bool markedForReconnection = false;
 
   NimBLERemoteService* service;
-  NimBLERemoteCharacteristic* weightCharacteristic;
-  NimBLERemoteCharacteristic* commandCharacteristic;
+  NimBLERemoteCharacteristic* weightCharacteristic = nullptr;
+  NimBLERemoteCharacteristic* commandCharacteristic = nullptr;
 
   std::vector<uint8_t> dataBuffer;
 
